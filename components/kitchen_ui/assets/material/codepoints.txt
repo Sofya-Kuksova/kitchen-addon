@@ -1,0 +1,6 @@
+block f08c
+local_cafe eb44
+oven e9c7
+skillet f543
+stockpot f545
+replay e042

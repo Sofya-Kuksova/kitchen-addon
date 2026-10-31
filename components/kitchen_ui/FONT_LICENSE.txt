@@ -1,0 +1,17 @@
+Typography: Inter, copyright The Inter Project Authors, SIL Open Font License 1.1.
+Full license: assets/fonts/OFL.txt. Original source font: assets/fonts/Inter.ttf.
+Source: https://github.com/google/fonts/tree/main/ofl/inter
+
+Icons: Google Material Symbols Outlined, Apache License 2.0.
+Full license: assets/material/LICENSE. Selected source SVGs and codepoints are in assets/material/.
+Source: https://fonts.google.com/icons
+https://github.com/google/material-design-icons
+
+kitchen_fonts.c contains rasterized subsets of these assets for LVGL 8.
+
+LVGL native symbols: subsets of the Font Awesome 5 Free Solid font bundled with LVGL 8.4,
+managed_components/lvgl__lvgl/scripts/built_in_font/FontAwesome5-Solid+Brands+Regular.woff.
+Embedded source notices:
+Copyright (c) Font Awesome
+Native font glyphs are supplied under SIL OFL 1.1; the OFL terms are also included
+in assets/fonts/OFL.txt. The subset uses the project-specific Kitchen name.

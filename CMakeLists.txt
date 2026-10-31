@@ -1,0 +1,12 @@
+cmake_minimum_required(VERSION 3.22)
+set(IDF_TARGET esp32p4)
+set(PROJECT_VER "0.1.0-baseline")
+include($ENV{IDF_PATH}/tools/cmake/version.cmake)
+set(KITCHEN_IDF_VERSION "${IDF_VERSION_MAJOR}.${IDF_VERSION_MINOR}.${IDF_VERSION_PATCH}")
+if(NOT KITCHEN_IDF_VERSION VERSION_EQUAL "6.0.2")
+    message(FATAL_ERROR "kitchen-addon requires ESP-IDF 6.0.2; found ${KITCHEN_IDF_VERSION}")
+endif()
+# Only the standalone runner adds the ABI fixture; embedded users import kitchen_* only.
+set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/standalone/app_manager")
+include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+project(kitchen-addon)

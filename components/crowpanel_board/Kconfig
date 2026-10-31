@@ -1,0 +1,44 @@
+menu "Kitchen baseline hardware"
+choice KITCHEN_BOARD
+    prompt "PCB revision (never inferred from silicon)"
+    default KITCHEN_BOARD_UNSELECTED
+config KITCHEN_BOARD_UNSELECTED
+    bool "Not selected (configuration error)"
+config KITCHEN_BOARD_V10
+    bool "HW V1.0"
+config KITCHEN_BOARD_V11
+    bool "HW V1.1"
+config KITCHEN_BOARD_V12
+    bool "HW V1.2"
+config KITCHEN_BOARD_V13
+    bool "HW V1.3 (candidate)"
+endchoice
+choice KITCHEN_LCD
+    prompt "LCD profile"
+    default KITCHEN_LCD_UNSELECTED
+config KITCHEN_LCD_UNSELECTED
+    bool "Not selected (configuration error)"
+config KITCHEN_LCD_LEGACY
+    bool "Legacy 1024x600 (HW V1.0/V1.1/V1.2)"
+config KITCHEN_LCD_V13
+    bool "Candidate HW V1.3 9/10.1 inch 1024x600"
+endchoice
+choice KITCHEN_SILICON
+    prompt "Silicon branch"
+    default KITCHEN_SILICON_UNSELECTED
+config KITCHEN_SILICON_UNSELECTED
+    bool "Not selected (configuration error)"
+config KITCHEN_SILICON_LEGACY
+    bool "P4 0.x/1.x"
+config KITCHEN_SILICON_V3
+    bool "P4 3.x"
+endchoice
+choice KITCHEN_TOUCH_ADDRESS
+    prompt "GT911 reset-selected I2C address"
+    default KITCHEN_TOUCH_ADDRESS_5D
+config KITCHEN_TOUCH_ADDRESS_5D
+    bool "0x5D (INT low during reset)"
+config KITCHEN_TOUCH_ADDRESS_14
+    bool "0x14 (INT high during reset)"
+endchoice
+endmenu
