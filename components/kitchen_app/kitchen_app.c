@@ -8,6 +8,7 @@ typedef struct {
     app_base_t base;
     kitchen_platform_t platform;
     kitchen_state_t state;
+    kitchen_settings_t settings;
     kitchen_ui_t ui;
     lv_timer_t *heartbeat;
     bool running, paused, suspended, fullscreen;
@@ -35,6 +36,7 @@ static uint64_t now_ms(void *ctx)
 }
 static void service(kitchen_app_t *app)
 {
+    kitchen_settings_poll(&app->settings);
     kitchen_core_update(&app->state, now_ms(app));
     uint8_t count = app->state.pending_chimes;
     app->state.pending_chimes = 0;
@@ -52,6 +54,12 @@ static void heartbeat(lv_timer_t *timer)
 static bool command(void *ctx, const kitchen_command_t *cmd)
 {
     kitchen_app_t *app = ctx;
+    if (cmd->kind == KITCHEN_RETRY_SAVE || cmd->kind == KITCHEN_SAVE_VOLUME) {
+        if (cmd->kind == KITCHEN_RETRY_SAVE) kitchen_settings_retry(&app->settings, &app->state);
+        else kitchen_settings_request(&app->settings, &app->state, 0);
+        service(app);
+        return true;
+    }
     if (cmd->kind == KITCHEN_PREVIEW_VOLUME) {
         service(app);
         if (!app->state.volume_percent) return true;
@@ -61,6 +69,8 @@ static bool command(void *ctx, const kitchen_command_t *cmd)
         return ret == ESP_OK;
     }
     uint8_t previous_volume = app->state.volume_percent;
+    kitchen_timer_t *timer = kitchen_core_find(&app->state, cmd->id);
+    kitchen_status_t previous_status = timer ? timer->status : KITCHEN_EMPTY;
     bool changed = kitchen_core_apply(&app->state, cmd, now_ms(app));
     if (changed && cmd->kind == KITCHEN_SET_VOLUME && app->platform.set_volume) {
         esp_err_t ret = app->platform.set_volume(app->platform.context, app->state.volume_percent);
@@ -70,6 +80,9 @@ static bool command(void *ctx, const kitchen_command_t *cmd)
             ESP_LOGW("kitchen", "volume update failed: %s", esp_err_to_name(ret));
         }
     }
+    if (changed && (cmd->kind == KITCHEN_CREATE || cmd->kind == KITCHEN_EDIT ||
+        (previous_status == KITCHEN_READY && (cmd->kind == KITCHEN_ADJUST || cmd->kind == KITCHEN_SET_TIME))))
+        kitchen_settings_request(&app->settings, &app->state, cmd->id);
     service(app);
     return changed;
 }
@@ -85,6 +98,14 @@ static esp_err_t create(app_base_t *self)
     kitchen_app_t *app = (kitchen_app_t *)self;
     app->platform = s_platform;
     kitchen_core_init(&app->state);
+    /* create is outside GUI-lock; load also orders earlier accepted writes. */
+    kitchen_settings_init(&app->settings, &app->state, &app->platform.storage);
+    for (unsigned key = 0; key < KITCHEN_SETTINGS_KEYS; ++key) {
+        kitchen_storage_result_t result = app->settings.entries[key].loaded;
+        if (result != KITCHEN_STORAGE_OK && result != KITCHEN_STORAGE_MISSING)
+            ESP_LOGW("kitchen", "settings key %u: %s (result %d); using safe defaults", key,
+                app->settings.entries[key].load_reason ? app->settings.entries[key].load_reason : "invalid backend result", (int)result);
+    }
     if (app->platform.set_volume) {
         esp_err_t ret = app->platform.set_volume(app->platform.context, app->state.volume_percent);
         if (ret != ESP_OK) return ret;
@@ -168,7 +189,7 @@ static esp_err_t create_content(app_base_t *self, lv_obj_t *container, app_view_
     /* Called in GUI job context: do not acquire a possibly nonrecursive lock. */
     if (view != APP_VIEW_FULLSCREEN) return ESP_ERR_NOT_SUPPORTED;
     kitchen_app_t *app = (kitchen_app_t *)self;
-    esp_err_t ret = kitchen_ui_create(&app->ui, container, &app->state, command, now_ms, back,
+    esp_err_t ret = kitchen_ui_create(&app->ui, container, &app->state, &app->settings, command, now_ms, back,
         app->platform.play_chime && app->platform.set_volume, app);
     if (ret == ESP_OK) update_view(app);
     return ret;

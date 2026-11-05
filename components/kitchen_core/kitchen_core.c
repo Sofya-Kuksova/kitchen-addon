@@ -4,22 +4,23 @@
 void kitchen_core_init(kitchen_state_t *state)
 {
     memset(state, 0, sizeof(*state));
-    state->next_id = 1;
+    for (unsigned i = 0; i < KITCHEN_MAX_TIMERS; ++i) {
+        state->timers[i].id = i + 1;
+        state->timers[i].color = i % 5;
+        state->timers[i].status = KITCHEN_EMPTY;
+    }
     state->volume_percent = 40;
 }
 kitchen_timer_t *kitchen_core_find(kitchen_state_t *state, uint32_t id)
 {
-    if (!state || !id) return NULL;
-    for (unsigned i = 0; i < KITCHEN_MAX_TIMERS; ++i)
-        if (state->timers[i].id == id) return &state->timers[i];
-    return NULL;
+    return state && id >= 1 && id <= KITCHEN_MAX_TIMERS ? &state->timers[id - 1] : NULL;
 }
 uint64_t kitchen_core_remaining(const kitchen_timer_t *timer, uint64_t now_ms)
 {
     if (timer->status == KITCHEN_RUNNING)
         return timer->deadline_ms > now_ms ? timer->deadline_ms - now_ms : 0;
     if (timer->status == KITCHEN_PAUSED) return timer->remaining_ms;
-    if (timer->status == KITCHEN_SAVED) return (uint64_t)timer->duration_s * 1000;
+    if (timer->status == KITCHEN_READY) return (uint64_t)timer->duration_s * 1000;
     return 0;
 }
 uint64_t kitchen_core_elapsed(const kitchen_timer_t *timer, uint64_t now_ms)
@@ -30,30 +31,12 @@ void kitchen_core_update(kitchen_state_t *state, uint64_t now_ms)
 {
     for (unsigned i = 0; i < KITCHEN_MAX_TIMERS; ++i) {
         kitchen_timer_t *timer = &state->timers[i];
-        if (timer->id && timer->status == KITCHEN_RUNNING && now_ms >= timer->deadline_ms) {
+        if (timer->status == KITCHEN_RUNNING && now_ms >= timer->deadline_ms) {
             timer->status = KITCHEN_DONE;
             timer->remaining_ms = 0;
             if (state->volume_percent && state->pending_chimes < KITCHEN_MAX_TIMERS) ++state->pending_chimes;
         }
     }
-}
-static void erase_id(uint32_t *order, uint8_t *count, uint32_t id)
-{
-    for (unsigned i = 0; i < *count; ++i) {
-        if (order[i] != id) continue;
-        memmove(order + i, order + i + 1, (*count - i - 1) * sizeof(*order));
-        --*count;
-        break;
-    }
-}
-static void save_timer(kitchen_state_t *state, kitchen_timer_t *timer)
-{
-    erase_id(state->active, &state->active_count, timer->id);
-    memmove(state->saved + 1, state->saved, state->saved_count * sizeof(*state->saved));
-    state->saved[0] = timer->id;
-    ++state->saved_count;
-    timer->status = KITCHEN_SAVED;
-    timer->remaining_ms = timer->deadline_ms = 0;
 }
 static bool valid_name(const char *name)
 {
@@ -68,11 +51,13 @@ static bool valid_seconds(int32_t seconds)
 {
     return seconds > 0 && seconds <= (int32_t)KITCHEN_MAX_SECONDS;
 }
-static void run(kitchen_timer_t *timer, uint64_t ms, uint64_t now_ms)
+static bool run(kitchen_timer_t *timer, uint64_t ms, uint64_t now_ms)
 {
+    if (now_ms > UINT64_MAX - ms) return false;
     timer->status = KITCHEN_RUNNING;
     timer->remaining_ms = timer->span_ms = ms;
     timer->deadline_ms = now_ms + ms;
+    return true;
 }
 bool kitchen_core_apply(kitchen_state_t *state, const kitchen_command_t *cmd, uint64_t now_ms)
 {
@@ -84,25 +69,17 @@ bool kitchen_core_apply(kitchen_state_t *state, const kitchen_command_t *cmd, ui
         return true;
     }
     kitchen_timer_t *timer = kitchen_core_find(state, cmd->id);
-    if (cmd->kind == KITCHEN_CREATE) {
-        if (state->active_count + state->saved_count >= KITCHEN_MAX_TIMERS ||
-            !valid_seconds(cmd->seconds) || !valid_name(cmd->name) ||
-            (unsigned)cmd->icon >= KITCHEN_ICON_COUNT) return false;
-        for (unsigned i = 0; i < KITCHEN_MAX_TIMERS; ++i) {
-            if (!state->timers[i].id) { timer = &state->timers[i]; break; }
-        }
-        if (!timer) return false;
-        /* Never reuse a live ID, including after the unsigned counter wraps. */
-        while (!state->next_id || kitchen_core_find(state, state->next_id)) ++state->next_id;
-        *timer = (kitchen_timer_t){.id = state->next_id++, .color = state->next_color,
-            .duration_s = (uint32_t)cmd->seconds, .icon = cmd->icon};
-        memcpy(timer->name, cmd->name, strlen(cmd->name) + 1);
-        state->next_color = (state->next_color + 1) % 5;
-        state->active[state->active_count++] = timer->id;
-        run(timer, (uint64_t)cmd->seconds * 1000, now_ms);
-        return true;
-    }
     if (!timer) return false;
+    if (cmd->kind == KITCHEN_CREATE) {
+        if (timer->status != KITCHEN_EMPTY || !valid_seconds(cmd->seconds) ||
+            !valid_name(cmd->name) || (unsigned)cmd->icon >= KITCHEN_ICON_COUNT ||
+            now_ms > UINT64_MAX - (uint64_t)cmd->seconds * 1000) return false;
+        timer->duration_s = (uint32_t)cmd->seconds;
+        timer->icon = cmd->icon;
+        memcpy(timer->name, cmd->name, strlen(cmd->name) + 1);
+        return run(timer, (uint64_t)cmd->seconds * 1000, now_ms);
+    }
+    if (timer->status == KITCHEN_EMPTY) return false;
     switch (cmd->kind) {
     case KITCHEN_PAUSE:
         if (timer->status != KITCHEN_RUNNING) return false;
@@ -110,71 +87,49 @@ bool kitchen_core_apply(kitchen_state_t *state, const kitchen_command_t *cmd, ui
         timer->status = KITCHEN_PAUSED;
         return true;
     case KITCHEN_RESUME:
-        if (timer->status != KITCHEN_PAUSED) return false;
+        if (timer->status != KITCHEN_PAUSED || now_ms > UINT64_MAX - timer->remaining_ms) return false;
         timer->deadline_ms = now_ms + timer->remaining_ms;
         timer->status = KITCHEN_RUNNING;
         return true;
     case KITCHEN_CANCEL:
-        if (timer->status != KITCHEN_RUNNING && timer->status != KITCHEN_PAUSED) return false;
-        save_timer(state, timer);
-        return true;
     case KITCHEN_ACKNOWLEDGE:
-        if (timer->status != KITCHEN_DONE) return false;
-        save_timer(state, timer);
-        return true;
-    case KITCHEN_REMOVE:
-        if (timer->status != KITCHEN_SAVED) return false;
-        erase_id(state->saved, &state->saved_count, timer->id);
-        memset(timer, 0, sizeof(*timer));
+        if (cmd->kind == KITCHEN_CANCEL ?
+            (timer->status != KITCHEN_RUNNING && timer->status != KITCHEN_PAUSED) : timer->status != KITCHEN_DONE) return false;
+        timer->status = KITCHEN_READY;
+        timer->remaining_ms = timer->deadline_ms = timer->span_ms = 0;
         return true;
     case KITCHEN_START:
-        if (timer->status != KITCHEN_SAVED) return false;
-        erase_id(state->saved, &state->saved_count, timer->id);
-        state->active[state->active_count++] = timer->id;
-        run(timer, (uint64_t)timer->duration_s * 1000, now_ms);
-        return true;
+        if (timer->status != KITCHEN_READY) return false;
+        return run(timer, (uint64_t)timer->duration_s * 1000, now_ms);
     case KITCHEN_REPEAT:
         if (timer->status != KITCHEN_DONE) return false;
-        run(timer, (uint64_t)timer->duration_s * 1000, now_ms);
-        return true;
+        return run(timer, (uint64_t)timer->duration_s * 1000, now_ms);
     case KITCHEN_EXTEND:
         if (timer->status != KITCHEN_DONE || !valid_seconds(cmd->seconds)) return false;
-        run(timer, (uint64_t)cmd->seconds * 1000, now_ms);
-        return true;
+        return run(timer, (uint64_t)cmd->seconds * 1000, now_ms);
     case KITCHEN_ADJUST:
     case KITCHEN_SET_TIME: {
         if (timer->status == KITCHEN_DONE) return false;
+        if (cmd->kind == KITCHEN_ADJUST && cmd->seconds != -60 && cmd->seconds != 60) return false;
         int64_t ms = cmd->kind == KITCHEN_ADJUST ?
             (int64_t)kitchen_core_remaining(timer, now_ms) + (int64_t)cmd->seconds * 1000 :
             (int64_t)cmd->seconds * 1000;
-        if (ms <= 0 || ms > (int64_t)KITCHEN_MAX_SECONDS * 1000) return false;
-        if (timer->status == KITCHEN_SAVED) timer->duration_s = (uint32_t)(ms / 1000);
+        if (ms <= 0 || (cmd->kind == KITCHEN_SET_TIME && ms < 1000) ||
+            ms > (int64_t)KITCHEN_MAX_SECONDS * 1000) return false;
+        if (timer->status == KITCHEN_READY) timer->duration_s = (uint32_t)(ms / 1000);
         else {
+            if (timer->status == KITCHEN_RUNNING && now_ms > UINT64_MAX - (uint64_t)ms) return false;
             timer->remaining_ms = (uint64_t)ms;
             if (timer->status == KITCHEN_RUNNING) timer->deadline_ms = now_ms + (uint64_t)ms;
-            /* A new arc baseline avoids a full arc clipped for minutes after adding time. */
             if (cmd->kind == KITCHEN_SET_TIME || (uint64_t)ms > timer->span_ms) timer->span_ms = (uint64_t)ms;
         }
         return true;
     }
     case KITCHEN_EDIT:
-        if (timer->status == KITCHEN_DONE || !valid_name(cmd->name) ||
-            (unsigned)cmd->icon >= KITCHEN_ICON_COUNT) return false;
-        memcpy(timer->name, cmd->name, strlen(cmd->name) + 1);
+        if (!valid_name(cmd->name) || (unsigned)cmd->icon >= KITCHEN_ICON_COUNT) return false;
+        if (timer->name != cmd->name) memcpy(timer->name, cmd->name, strlen(cmd->name) + 1);
         timer->icon = cmd->icon;
         return true;
-    case KITCHEN_MOVE: {
-        bool saved = timer->status == KITCHEN_SAVED;
-        uint32_t *order = saved ? state->saved : state->active;
-        uint8_t *count = saved ? &state->saved_count : &state->active_count;
-        if (cmd->position >= *count) return false;
-        erase_id(order, count, timer->id);
-        memmove(order + cmd->position + 1, order + cmd->position,
-            (*count - cmd->position) * sizeof(*order));
-        order[cmd->position] = timer->id;
-        ++*count;
-        return true;
-    }
     default: return false;
     }
 }

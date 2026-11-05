@@ -1,5 +1,6 @@
 #include "standalone_runner.h"
 #include "standalone_audio.h"
+#include "standalone_storage.h"
 #include <stdlib.h>
 #include <string.h>
 #include "display_port.h"
@@ -26,7 +27,8 @@ esp_err_t standalone_runner_run(void)
     const kitchen_platform_t platform = {.lock = lock, .unlock = unlock, .now_ms = now_ms, .navigate = navigate,
         .play_chime = audio == ESP_OK ? standalone_audio_chime : NULL,
         .set_volume = audio == ESP_OK ? standalone_audio_volume : NULL,
-        .play_volume_preview = audio == ESP_OK ? standalone_audio_preview : NULL};
+        .play_volume_preview = audio == ESP_OK ? standalone_audio_preview : NULL,
+        .storage = standalone_storage_init()};
     esp_err_t ret = kitchen_app_configure(&platform);
     if (ret != ESP_OK) return ret;
     const app_descriptor_t *descriptor = get_kitchen_app_desc();

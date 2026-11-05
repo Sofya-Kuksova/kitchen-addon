@@ -25,6 +25,9 @@ static esp_err_t navigate(void *ctx, int32_t id, kitchen_nav_t intent)
 }
 esp_err_t kitchen_host_configure(void)
 {
-    const kitchen_platform_t p = {.lock = lock, .unlock = unlock, .now_ms = now_ms, .navigate = navigate};
+    /* No host storage API is assumed. Without this optional group Kitchen
+     * works in RAM and displays a persistence-unavailable notice. */
+    const kitchen_platform_t p = {.lock = lock, .unlock = unlock, .now_ms = now_ms, .navigate = navigate,
+        .storage = {0}};
     return kitchen_app_configure(&p);
 }

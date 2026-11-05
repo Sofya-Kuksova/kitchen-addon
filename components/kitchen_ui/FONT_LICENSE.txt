@@ -15,3 +15,17 @@ Embedded source notices:
 Copyright (c) Font Awesome
 Native font glyphs are supplied under SIL OFL 1.1; the OFL terms are also included
 in assets/fonts/OFL.txt. The subset uses the project-specific Kitchen name.
+
+Supplemental kitchen_font_extensions.c uses the same licensed sources:
+Material Symbols Outlined (56px kitchen / 36px Settings) under Apache-2.0;
+Inter Bold 18/20px status subsets under SIL OFL 1.1. See assets/README.md.
+
+kitchen_status_24.c is a supplemental Inter Bold24 subset (SIL OFL 1.1).
+The large-card status uses the Inter Bold36 subset listed below.
+
+kitchen_large_assets.c: Material Symbols Outlined 88px kitchen / 52px Settings
+under Apache-2.0, native FontAwesome control subset 48px and Inter700 status
+subset 36px under SIL OFL 1.1. Same reviewed source fonts as above.
+
+kitchen_overlay_fonts.c: Inter Bold20 action labels (ASCII and middle dot),
+SIL OFL 1.1, from the existing assets/fonts/Inter.ttf. No new source fonts.

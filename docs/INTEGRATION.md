@@ -4,6 +4,41 @@
 snapshot, ни старый checkout crow-ha-fw не изменялись. Точка регистрации и полный
 интеграционный build/device test — отдельный разрешаемый этап.
 
+## Текущий storage ABI раскладки A от 04.11.2026
+
+Точка configure/getter и descriptor app_manager сохранены. В конец kitchen_platform_t
+добавлена storage — kitchen_storage_backend_t из kitchen_settings.h. Platform теперь
+публично зависит от plain-C kitchen_core; closure по-прежнему четыре компонента.
+Все использующие структуры компоненты необходимо пересобрать совместно.
+
+Группа load/submit/poll задаётся целиком или остаётся нулевой. Контекст backend
+может отличаться от platform.context и обязан жить дольше всех экземпляров.
+
+- load(context,key,bytes,&length) вызывается в create вне GUI-lock. До ответа
+  завершает все ранее принятые записи. Возвращает OK/MISSING/ERROR/PROTECTED.
+  Начальная ёмкость bytes — KITCHEN_RECORD_MAX=39; не писать за её пределами.
+  Oversized/newer schema возвращается PROTECTED без удаления/перезаписи.
+- submit(context,key,bytes,length,&ticket) копирует snapshot до возврата и не ждёт
+  I/O. Возвращает PENDING с ненулевым backend-wide uint64 ticket либо ошибку.
+  Tickets не переиспользуются после destroy/new instance. Запросы ключа выполняются
+  по порядку; допустимо объединить ещё не начатые запросы в последний.
+- poll(context,key,ticket) не блокирует. PENDING — ожидание, OK — успешны запись
+  и commit, ERROR — отказ/вытеснение. Никаких completion callbacks с app/UI pointers.
+
+Key 0 — volume, 1–6 — слоты. Байтовый формат, точки записи, ошибки и Retry описаны
+в TIMERS.md. Хост сам выбирает namespace/сервис, владеет worker и глобальным NVS;
+kitchen_* не инициализирует, не стирает его и не добавляет FreeRTOS-задачи.
+Standalone main/standalone_storage.c в хост не переносить.
+
+Текущий пример integration bridge явно оставляет storage нулевым: работает RAM-режим
+с Settings won't be saved. Реальное подключение хранилища и аудио хоста остаётся
+отдельной интеграцией. Открытие/отмена редакторов не пишет. Все новые instances
+восстанавливают только READY/EMPTY; hide/suspend сохраняют живые дедлайны.
+
+Ниже сохранены детали первоначальной host-интеграции. Старые описания RAM-only,
+кругов и ARC не задают поведение раскладки A; для неё приоритет имеют этот раздел
+и TIMERS.md. Текущему UI нужны LABEL, BTN, ROLLER, TEXTAREA, KEYBOARD, SLIDER.
+
 ## Что переносить
 
 Только каталоги `components/kitchen_core`, `kitchen_platform`, `kitchen_ui`,
@@ -116,14 +151,15 @@ GUI worker или deep sleep. Для точного audio deadline в этих �
 предоставить отдельный scheduling/wake contract; standalone этого не доказывает.
 
 WAV, I2S/PA, audio worker и его очередь входят только в standalone main. Kitchen
-не трогает host hardware/codec/I2C, не добавляет audio SDK packages и не пишет NVS.
-Volume хранится в RAM экземпляра, default=40%, mute=0. События завершения потребляются
+не трогает host hardware/codec/I2C, не добавляет audio SDK packages и не вызывает
+NVS напрямую. Volume сохраняется через optional storage backend; без него только
+RAM, default=40%, mute=0. События завершения потребляются
 один раз, ошибки очереди логируются без повторного проигрывания. DONE/elapsed сохраняются
 до Acknowledge. Публичный getter/descriptor app_manager и host bridge не менялись.
 
-LVGL должен включать ARC, LABEL, BTN, ROLLER, TEXTAREA, KEYBOARD, SLIDER и текстовые
-bitmap-шрифты. LV_SYMBOL_MUTE/VOLUME_MID/VOLUME_MAX отображаются через существующий fallback
-на LV_FONT_DEFAULT, который должен содержать стандартные LVGL symbols.
+LVGL должен включать LABEL, BTN, ROLLER, TEXTAREA, KEYBOARD, SLIDER и текстовые
+bitmap-шрифты. LV_FONT_DEFAULT должен содержать стандартные LVGL symbols (в том числе SETTINGS).
+Speaker рисуется прежними примитивами, No icon использует Block из kitchen_symbols_48.
 
 ### Optional volume preview hook
 

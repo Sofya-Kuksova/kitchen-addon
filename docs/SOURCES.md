@@ -159,12 +159,33 @@ app_manager при embedded-сборке. Для приватного standalone
 основания назначать хосту новую лицензию. Копия заголовка не поставляется в репозитории;
 при дальнейшей дистрибуции контрактов нужно сохранить условия правообладателя.
 
-## Kitchen chime и аудио reference (31.10.2026)
+## Kitchen chime и аудио reference (обновлено 05.11.2026)
 
-- User input: /Users/sonyakuks/Downloads/kitchen_timer_chime.wav.
-- Local immutable copy: main/assets/kitchen_timer_chime.wav; 136754 bytes.
-- SHA-256: 016aeb127f919cf736175d828523e9967c3aea6d23a7877a70906c0e3bbe90a4.
-- PCM mono, 16-bit little-endian, 44100 Hz, 68355 frames, 1.55 seconds.
+- User input: /Users/sonyakuks/Downloads/soundreality-bell-sound-effect-613873.mp3.
+- Source MP3: stereo 48000 Hz, decoded duration 4.824 seconds; original unchanged.
+- Source SHA-256: e21b0eed44a355efb01ebdb215ae4eec91add6a6efb0766867665f0a0861f33f.
+- Runtime asset: main/assets/kitchen_timer_chime.wav; 183500 bytes.
+- WAV SHA-256: 45a52177178de3d31a9d2130edeeeeb399bc1c1c82df6a11683828d335ab431e.
+- PCM mono, 16-bit little-endian, 44100 Hz, 91728 frames, 2.08 seconds.
+- Trailing signal stays below -60 dB after 1.978646 s. Trim at 2.08 s retains
+  the bell decay; final 50 ms fade avoids an abrupt end. No leading silence
+  >=100 ms was detected at -50 dB, so the start was retained.
+- Mono is the average of left/right. Resampling briefly peaks at +0.035 dBFS
+  in float, so gain -0.6 dB is applied after resampling to avoid PCM16 clipping.
+  Final absolute sample peak 30706, no saturated samples, last sample zero.
+- The old 1.55-s WAV was replaced at the same embedded path; CMake symbols,
+  parser, worker, software volume and preview asset are unchanged. Asset growth
+  is 46746 bytes; actual firmware size is pending the owner's manual build.
+
+Reproduction from the repository root (media conversion only, not a firmware build):
+
+```sh
+ffmpeg -y -i /Users/sonyakuks/Downloads/soundreality-bell-sound-effect-613873.mp3 \
+  -map_metadata -1 \
+  -af 'pan=mono|c0=0.5*c0+0.5*c1,atrim=end=2.08,asetpts=PTS-STARTPTS,aresample=44100,volume=-0.6dB,afade=t=out:st=2.03:d=0.05' \
+  -ar 44100 -ac 1 -c:a pcm_s16le -bitexact main/assets/kitchen_timer_chime.wav
+```
+
 - Reference (read only): Product Explainer components/demo_audio/src/demo_audio.cpp,
   demo_ui/src/demo_speaker_check.c, demo_ui/src/demo_bg_motion.c,
   espressif__esp32_p4_function_ev_board/esp32_p4_function_ev_board.c and my_codec.c.
@@ -175,3 +196,13 @@ app_manager при embedded-сборке. Для приватного standalone
 Volume preview: main/assets/volume_release.pcm, unchanged copy of Product Explainer
 components/demo_audio/assets/sfx/volume_release.pcm. 34596 bytes, 17298 samples,
 PCM16 LE mono 16000 Hz; gain 0.40 from kSfxVolumeReleaseGain. SHA-256: 70979d8d26fead2a5feff98b085f7faf6f06c1e4d9194aa6de860e26f5189618.
+
+## Дополнительные UI assets
+
+Официальные источники Settings и Material Symbols TTF, hash и точная команда
+генерации записаны в components/kitchen_ui/assets/README.md. Новый
+components/kitchen_ui/assets/material/settings_36px.svg — reference, Apache-2.0.
+Новый kitchen_font_extensions.c содержит 56px kitchen glyphs, 36px Settings
+и Inter Bold 700 status subsets. Inter.ttf не менялся, лицензия SIL OFL 1.1
+сохранена. Ассеты визуально просмотрены в /tmp/kitchen-font-extensions.png;
+это проверка растеризации, не firmware/device PASS.

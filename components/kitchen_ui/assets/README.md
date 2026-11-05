@@ -39,3 +39,85 @@ Detailed timer cards use an additional 64-px kitchen subset, rasterized directly
 from the cached original variable font at 64 px and optical size 48 (the font's
 maximum optical-size axis). Compact 40/48-px bitmaps are not enlarged or replaced.
 The 64-px glyph is shown in a 96-px badge. No extra runtime font renderer is needed.
+
+## Supplemental UI assets
+
+Current medium cards use kitchen_symbols_56 (56px, optical size 48), rasterized
+directly from the official variable font, not enlarged from 40px bitmaps.
+Settings uses kitchen_settings_36, Material Symbols Outlined U+E8B8, size 36
+(33px ink height), replacing the unreliable LV_SYMBOL_SETTINGS transform path.
+Reference SVG: material/settings_36px.svg, white fill, from the official
+https://raw.githubusercontent.com/google/material-design-icons/master/symbols/web/settings/materialsymbolsoutlined/settings_48px.svg
+Only height/width and white fill are changed; the vector path is unchanged.
+Runtime glyphs come from the reviewed official TTF, not an SVG decoder.
+
+Official TTF:
+https://raw.githubusercontent.com/google/material-design-icons/master/variablefont/MaterialSymbolsOutlined%5BFILL,GRAD,opsz,wght%5D.ttf
+SHA-256: f7837ba8573d9a7a74931618ced8307bc81f96d49af296bf6c8052c772ed5282.
+The downloaded input matches the source used for existing kitchen glyphs.
+PAUSED/DONE use Inter Bold (weight 700), 18/20px, only the required capital letters
+and space, from the existing fonts/Inter.ttf under SIL OFL 1.1.
+
+Generate ONLY the supplemental file (no firmware build):
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 tools/generate_ui_extensions.py \
+  --material-font /tmp/kitchen-material-symbols.ttf \
+  --preview /tmp/kitchen-font-extensions.png
+```
+
+Output: kitchen_font_extensions.c. Existing generated kitchen_fonts.c and
+include/kitchen_symbols.h are not regenerated or edited. CMake explicitly includes
+the new translation unit. Material Symbols license remains material/LICENSE
+(Apache-2.0); Inter license remains fonts/OFL.txt.
+
+Status hierarchy: S1 uses the supplemental Inter700 kitchen_status_36. Medium cards
+and overlay use the supplemental kitchen_status_24 from local Inter.ttf, and
+small cards retain kitchen_status_18. Generate only the new file without
+regenerating previous subsets or requiring the Material Symbols input:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 tools/generate_ui_extensions.py --status24-only
+```
+
+Output: kitchen_status_24.c, glyphs restricted to PAUSED/DONE and space,
+Inter Bold700, line-height30/base-line6, SIL OFL1.1. This is media asset
+generation only, not a firmware/project compilation.
+
+## Proportional large-card assets
+
+Current kitchen icon tiers are 40/56/88px. The previous 64px large-card subset
+is retained in the original generated source, but the main large card uses 88px.
+New glyphs are rasterized directly from the same reviewed official variable TTF
+(SHA-256 f7837ba8573d9a7a74931618ced8307bc81f96d49af296bf6c8052c772ed5282),
+not enlarged from smaller bitmaps. Reusing this verified downloaded source
+avoids replacing the icon designs with a different set. Optical size stays at
+the font maximum 48 for the 88px render.
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 tools/generate_ui_extensions.py \
+  --material-font /tmp/kitchen-material-symbols.ttf --large-only \
+  --preview /tmp/kitchen-icon-scales.png
+```
+
+Only kitchen_large_assets.c is generated: kitchen_symbols_88 (four kitchen
+glyphs), kitchen_settings_52 (Google Settings), kitchen_controls_48 (native
+LVGL FontAwesome Play/Pause/OK), kitchen_status_36 (Inter700). Existing generated
+subsets remain untouched. Runtime has no TTF renderer, downloads or transform
+zoom; native sizes are selected by the available dimensions of the card/button.
+Licenses are listed in FONT_LICENSE.txt. The PNG is an asset preview, not a
+panel screenshot or device validation.
+
+## Overlay action weight
+
+`kitchen_overlay_fonts.c` adds `kitchen_actions_20`, Inter Bold700 at20px,
+ASCII plus middle dot for Repeat labels, using the existing local Inter.ttf
+under SIL OFL1.1. The name button, textarea and placeholder reuse the existing
+Inter Bold32 subset. No existing generated files are rewritten:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 tools/generate_ui_extensions.py --overlay-only \
+  --preview /tmp/kitchen-overlay-fonts.png
+```
+
+This generates media assets only, without a compiler or firmware build.
