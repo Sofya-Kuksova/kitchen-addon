@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define KITCHEN_MAX_TIMERS 6
+#define KITCHEN_MAX_TIMERS 5
 #define KITCHEN_NAME_MAX 32
 #define KITCHEN_MAX_SECONDS 86399U
 

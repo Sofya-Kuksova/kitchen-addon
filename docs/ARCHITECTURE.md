@@ -20,7 +20,7 @@ LVGL init/task, NVS, Wi-Fi, HA/audio/settings/sleep services или standalone m
 Файлы `integration/` не входят в standalone build и не импортируются автоматически.
 Не существует параллельной LVGL9 UI-реализации.
 
-Core: шесть постоянных слотов с ID 1–6, EMPTY/READY/RUNNING/PAUSED/DONE,
+Core: пять постоянных слотов с ID 1–5, EMPTY/READY/RUNNING/PAUSED/DONE,
 plain-C сериализация и координатор сохранения kitchen_settings.
 Конфигурация отделена от сеанса; слот и цвет не зависят от состояния.
 Running хранит monotonic deadline, paused — точный остаток, done — исходный дедлайн.
@@ -149,7 +149,7 @@ LVGL animation engine, без новой FreeRTOS задачи/таймера. D
 ## Исторические детали аудио до раскладки A
 
 Ниже сохранена история исходной реализации. Для текущего поведения, хранения
-и интерфейса приоритет имеет TIMERS.md. Размер модели теперь шесть слотов;
+и интерфейса приоритет имеет TIMERS.md. Размер модели теперь пять слотов;
 standalone audio queue по-прежнему содержит 20 запросов.
 
 ## Audio boundary и независимый heartbeat
@@ -177,7 +177,7 @@ standalone_audio и бинарный WAV. Реальные хостовые audi
 
 ## Раскладка A и сохранение
 
-UI создаёт шесть прямоугольных карточек один раз. Tick обновляет изменившиеся
+UI создаёт пять прямоугольных карточек один раз. Tick обновляет изменившиеся
 цифры, полосу и внутренние контуры; старые списки, drag и halo bitmap cache удалены.
 Единственный timer overlay сохраняет локальные черновики при DONE; клавиатура
 не пересоздаёт барабаны. Все bindings живут в ui, анимации используют только ui
@@ -249,7 +249,7 @@ Direct mode/avoid tearing, frozen background и edge-strip invalidation сохр
 ## Иерархия статусов и распределение normal overlay
 
 Статусы главной сетки имеют три уровня: 32px (существующий Inter700 heading font)
-на S1, новый ограниченный subset kitchen_status_24 на S2/S3 и status18 на S4–S6.
+на S1, новый ограниченный subset kitchen_status_24 на S2/S3 и status18 на S4–S5.
 Overlay также status24. tools/generate_ui_extensions.py --status24-only создаёт
 только новый kitchen_status_24.c; прежние generated fonts не изменяются.
 
@@ -295,3 +295,17 @@ NULL transition descriptor не используется: LVGL8.4 перебир
 Новый const bitmap subset
 Inter700/20px подключён CMake, исходный Inter32 переиспользован для имени.
 Модель, storage worker, синхронизация и lifecycle этой коррекцией не меняются.
+
+## Раскладка B: пять слотов
+
+KITCHEN_MAX_TIMERS=5, KITCHEN_SETTINGS_KEYS=6 (volume + S1–S5). Размеры модели,
+UI-массива, settings entries и bounds backend согласованы через эти константы;
+key6/ID6 больше не принимаются. Формат version1 и постоянные ID1–5 сохранены.
+Короткие карточки определяются по h<240, не по ширине; S4/S5 теперь292×208.
+
+Standalone worker при старте под s_io выполняет точечный erase slot6/commit.
+Флаг s_ready под s_mux открывает load только после попытки миграции, load ждёт
+вне GUI-lock и дополнительно сохраняет прежний барьер поколений записей.
+Миграция не содержит app/LVGL pointers и не создаёт новую задачу. Ошибка видна
+в логе, остальные ключи доступны, следующий boot повторяет попытку. Реальная
+host-интеграция не менялась, host RAM-only не имеет NVS-миграции.

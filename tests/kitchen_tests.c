@@ -15,12 +15,13 @@ static void model(void)
     kitchen_state_t state;
     kitchen_core_init(&state);
     assert(state.volume_percent == 40);
-    for (unsigned i = 0; i < 6; ++i) {
+    for (unsigned i = 0; i < KITCHEN_MAX_TIMERS; ++i) {
         assert(state.timers[i].id == i + 1 && state.timers[i].status == KITCHEN_EMPTY);
         assert(state.timers[i].color == i % 5 && !state.timers[i].name[0]);
     }
     assert(!apply(&state, KITCHEN_CREATE, 0, 180, 0));
-    assert(!apply(&state, KITCHEN_CREATE, 7, 180, 0));
+    assert(!apply(&state, KITCHEN_CREATE, 6, 180, 0));
+    assert(kitchen_core_find(&state, 6) == NULL);
     assert(!apply(&state, KITCHEN_CREATE, 1, 0, 0));
     assert(!apply(&state, KITCHEN_CREATE, 1, 86400, 0));
     assert(apply(&state, KITCHEN_CREATE, 1, 180, 100));
@@ -72,13 +73,13 @@ static void model(void)
     assert(!apply(&state, KITCHEN_RESUME, 1, 0, UINT64_MAX - 1));
 
     kitchen_core_init(&state);
-    for (unsigned id = 1; id <= 6; ++id) assert(apply(&state, KITCHEN_CREATE, id, 1, 10));
+    for (unsigned id = 1; id <= KITCHEN_MAX_TIMERS; ++id) assert(apply(&state, KITCHEN_CREATE, id, 1, 10));
     kitchen_core_update(&state, 1010);
-    assert(state.pending_chimes == 6);
+    assert(state.pending_chimes == KITCHEN_MAX_TIMERS);
     state.pending_chimes = 0;
     kitchen_core_update(&state, 999999);
     assert(state.pending_chimes == 0);
-    for (unsigned id = 1; id <= 6; ++id) {
+    for (unsigned id = 1; id <= KITCHEN_MAX_TIMERS; ++id) {
         assert(state.timers[id - 1].status == KITCHEN_DONE);
         assert(apply(&state, KITCHEN_EXTEND, id, 1, 999999));
     }
@@ -198,8 +199,8 @@ static void persistence(void)
     kitchen_settings_poll(&settings);
     assert(fake.committed[0][1] == 0);
 
-    /* All six records, all runtime states, including the largest ASCII name. */
-    for (unsigned id = 1; id <= 6; ++id) {
+    /* All five records, all runtime states, including the largest ASCII name. */
+    for (unsigned id = 1; id <= KITCHEN_MAX_TIMERS; ++id) {
         if (id > 1) assert(apply(&state, KITCHEN_CREATE, id, id * 10, 0));
         kitchen_command_t edit = {.kind = KITCHEN_EDIT, .id = id,
             .name = "12345678901234567890123456789012", .icon = KITCHEN_ICON_OVEN};
@@ -216,7 +217,7 @@ static void persistence(void)
     kitchen_core_init(&reboot);
     kitchen_settings_init(&loaded, &reboot, &backend);
     assert(reboot.volume_percent == 0 && reboot.pending_chimes == 0);
-    for (unsigned i = 0; i < 6; ++i) {
+    for (unsigned i = 0; i < KITCHEN_MAX_TIMERS; ++i) {
         assert(reboot.timers[i].status == KITCHEN_READY);
         assert(!reboot.timers[i].deadline_ms && !reboot.timers[i].remaining_ms);
         assert(reboot.timers[i].icon == KITCHEN_ICON_OVEN && strlen(reboot.timers[i].name) == 32);
@@ -242,6 +243,8 @@ static void records(void)
     kitchen_state_t state;
     kitchen_core_init(&state);
     uint8_t data[KITCHEN_RECORD_MAX] = {1, 0x7f, 0x51, 1, 0, 4, 0}; /* 86399 s */
+    assert(kitchen_settings_encode(&state, 6, data) == 0);
+    assert(kitchen_settings_decode(&state, 6, data, 7) == KITCHEN_STORAGE_ERROR);
     assert(kitchen_settings_decode(&state, 1, data, 7) == KITCHEN_STORAGE_OK);
     assert(state.timers[0].duration_s == 86399);
     data[1] = 0x80; /* 86400 s */

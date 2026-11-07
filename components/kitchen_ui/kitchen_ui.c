@@ -55,7 +55,7 @@ static const char *icon_names[] = {KITCHEN_SYMBOL_BLOCK, KITCHEN_SYMBOL_LOCAL_CA
 static const uint32_t presets[] = {60, 180, 300, 600, 900, 1800};
 static const int geometry[KITCHEN_MAX_TIMERS][4] = {
     {12,76,392,512}, {416,76,292,292}, {720,76,292,292},
-    {416,380,190,208}, {618,380,191,208}, {821,380,191,208}
+    {416,380,292,208}, {720,380,292,208}
 };
 static void action_event(lv_event_t *event);
 static void refresh(kitchen_ui_t *ui);
@@ -390,9 +390,9 @@ static void make_card(kitchen_ui_t *ui, unsigned index)
     lv_obj_add_flag(card->object, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(card->object, card_click, LV_EVENT_CLICKED, card);
     lv_obj_add_event_cb(card->object, glow_draw, LV_EVENT_DRAW_MAIN, card);
-    /* Typography uses available width; anchors and spacings use the actual
-     * card height. The minimum touch target takes precedence on small slots. */
-    bool large = w >= 340, small = w < 240;
+    /* The short, wide lower cards retain their small typography tier.
+     * Width alone no longer distinguishes them from the middle tier. */
+    bool large = w >= 340, small = h < 240;
     int inset = w * 55 / 1000;
     if (inset < 16) inset = 16;
     int radius = w * 65 / 1000;
@@ -461,7 +461,7 @@ static void update_card(kitchen_card_t *card, uint64_t current)
     }
     if (!card->painted || card->painted_status != timer->status) {
         label_value(card->status, timer->status == KITCHEN_PAUSED ? "PAUSED" : timer->status == KITCHEN_DONE ? "DONE" : "");
-        primary_caption(card->action, timer->status, geometry[card->id - 1][2], geometry[card->id - 1][2] < 240);
+        primary_caption(card->action, timer->status, geometry[card->id - 1][2], geometry[card->id - 1][3] < 240);
         card->painted_status = timer->status;
     }
     int value = progress(timer, current);

@@ -19,10 +19,10 @@ static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 static SemaphoreHandle_t s_io;
 static TaskHandle_t s_worker;
 static nvs_handle_t s_handle;
-static bool s_open;
+static bool s_open, s_ready;
 static uint64_t s_ticket;
 static const char *TAG = "kitchen_storage";
-static const char *keys[] = {"volume", "slot1", "slot2", "slot3", "slot4", "slot5", "slot6"};
+static const char *keys[] = {"volume", "slot1", "slot2", "slot3", "slot4", "slot5"};
 
 /* Caller owns s_io. Never erase NVS to recover an initialization failure. */
 static esp_err_t open_storage(void)
@@ -37,6 +37,22 @@ static esp_err_t open_storage(void)
 static void worker(void *argument)
 {
     (void)argument;
+    /* Explicit five-slot migration requested by the owner. Only this retired
+     * key is removed, including any old schema; other records stay intact.
+     * Keep erase/commit on the sole writer, before load is allowed to proceed. */
+    xSemaphoreTake(s_io, portMAX_DELAY);
+    esp_err_t cleanup = open_storage();
+    if (cleanup == ESP_OK) {
+        cleanup = nvs_erase_key(s_handle, "slot6");
+        if (cleanup == ESP_OK) cleanup = nvs_commit(s_handle);
+        else if (cleanup == ESP_ERR_NVS_NOT_FOUND) cleanup = ESP_OK;
+    }
+    if (cleanup != ESP_OK)
+        ESP_LOGW(TAG, "retired slot6 cleanup failed (retry next boot): %s", esp_err_to_name(cleanup));
+    xSemaphoreGive(s_io);
+    portENTER_CRITICAL(&s_mux);
+    s_ready = true;
+    portEXIT_CRITICAL(&s_mux);
     for (;;) {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
         bool work;
@@ -83,8 +99,8 @@ static kitchen_storage_result_t load(void *context, unsigned key, uint8_t *data,
     for (unsigned i = 0; i < KITCHEN_SETTINGS_KEYS; ++i) barrier[i] = s_entries[i].issued;
     portEXIT_CRITICAL(&s_mux);
     for (;;) {
-        bool ready = true;
         portENTER_CRITICAL(&s_mux);
+        bool ready = s_ready;
         for (unsigned i = 0; i < KITCHEN_SETTINGS_KEYS; ++i)
             if (s_entries[i].completed < barrier[i]) ready = false;
         portEXIT_CRITICAL(&s_mux);

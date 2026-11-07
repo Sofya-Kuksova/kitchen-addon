@@ -12,6 +12,35 @@
 | UI/touch/audio/heap/lifecycle | NOT RUN | Нужна реальная панель |
 | Реальная host integration | NOT RUN | В эту задачу не входит |
 
+## Раскладка B: пять таймеров, расширенный нижний ряд
+
+Текущая раскладка заменяет прежние шестислотовые размеры ниже. Изменены
+README.md, kitchen_core/include/kitchen_core.h и kitchen_settings.h,
+kitchen_ui/kitchen_ui.c, main/standalone_storage.c, tests/kitchen_tests.c,
+tests/README.md, docs/TIMERS.md, ARCHITECTURE.md, BUILDING.md, INTEGRATION.md
+и этот файл. Профили, BSP, дисплей, шрифты/иконки, audio и прошиватор не менялись.
+
+Статический просмотр: PASS в пределах исходников. C-сценарии, firmware build,
+UI/touch, NVS migration/power-loss, hardware/lifecycle: NOT RUN. Агент не запускал
+компиляторы, тесты или аппаратные команды. Старые архивы содержат прежнюю версию.
+
+Ручные проверки:
+
+1. Пять карточек: S1 392×512, S2/S3 292×292, S4/S5 292×208, gaps12.
+   Нижние сохраняют компактные шрифты и кнопки с полной подписью; проверить
+   все состояния, длинные имена и 23:59:59/DONE>суток. Нет S6 и пустой колонки.
+2. Переход с шестислотовой версии: заранее сохранить разные параметры S1–S6
+   и volume. После новой прошивки S1–S5/volume не изменены, slot6 удалён после
+   успешного commit. Повторный reboot не требует новой записи при отсутствии slot6.
+3. Прервать питание при миграции, проверить идемпотентный повтор. Ошибка erase/
+   commit выводит warning, S1–S5 доступны, миграция повторяется после reboot.
+   Проверить неизвестную схему S6 (удаляется явно), S1–S5 (защита сохранена).
+4. Пять одновременных завершений — пять звуковых событий. READY/PAUSED/DONE,
+   Repeat и Cancel закрывают overlay по-прежнему, рамка overlay статична.
+   50 циклов open/close/hide/suspend/recreate, без зависания на storage load.
+5. Plain-C сценарии обновлены под пять слотов, ID6 и serialization key6 отклоняются;
+   запуск вручную по tests/README.md. Проверка реального NVS не покрывается fake backend.
+
 ## Закрытие overlay после Repeat
 
 Изменены components/kitchen_ui/kitchen_ui.c, docs/TIMERS.md и этот файл.

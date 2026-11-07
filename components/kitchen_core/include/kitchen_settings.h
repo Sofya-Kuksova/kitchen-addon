@@ -4,7 +4,7 @@
 
 #define KITCHEN_SETTINGS_KEYS (KITCHEN_MAX_TIMERS + 1)
 #define KITCHEN_RECORD_MAX (7 + KITCHEN_NAME_MAX)
-/* Key 0 is volume; keys 1..6 are stable slot IDs. */
+/* Key 0 is volume; keys 1..5 are stable slot IDs. */
 typedef enum {
     KITCHEN_STORAGE_OK, KITCHEN_STORAGE_PENDING, KITCHEN_STORAGE_MISSING,
     KITCHEN_STORAGE_ERROR, KITCHEN_STORAGE_PROTECTED

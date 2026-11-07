@@ -25,7 +25,7 @@ snapshot, ни старый checkout crow-ha-fw не изменялись. То�
 - poll(context,key,ticket) не блокирует. PENDING — ожидание, OK — успешны запись
   и commit, ERROR — отказ/вытеснение. Никаких completion callbacks с app/UI pointers.
 
-Key 0 — volume, 1–6 — слоты. Байтовый формат, точки записи, ошибки и Retry описаны
+Key 0 — volume, 1–5 — слоты. Байтовый формат, точки записи, ошибки и Retry описаны
 в TIMERS.md. Хост сам выбирает namespace/сервис, владеет worker и глобальным NVS;
 kitchen_* не инициализирует, не стирает его и не добавляет FreeRTOS-задачи.
 Standalone main/standalone_storage.c в хост не переносить.
