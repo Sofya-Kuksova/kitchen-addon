@@ -34,7 +34,7 @@ Embedded-модуль не создаёт FreeRTOS задач или аппар�
 ## Platform и контексты
 
 `kitchen_platform_t` — C ABI: context, lock/unlock, now_ms, navigate, optional
-play_chime/set_volume (оба или ни одного, неблокирующие), preview и optional
+submit_audio/set_volume (оба или ни одного, неблокирующие), preview и optional
 storage load/submit/poll (полная группа или ни одного). Формат записей — TIMERS.md.
 load вызывается только в create вне GUI-lock; submit/poll не блокируют и не хранят
 app/UI pointers. kitchen_settings принимает только актуальный ticket.
@@ -146,34 +146,56 @@ LVGL animation engine, без новой FreeRTOS задачи/таймера. D
 Имена обрезаются многоточием, время подбирает существующий шрифт по ширине строки.
 Существующие glyphs используются без повторной генерации.
 
-## Исторические детали аудио до раскладки A
+## Audio boundary, heartbeat и standalone mixer (09.11.2026)
 
-Ниже сохранена история исходной реализации. Для текущего поведения, хранения
-и интерфейса приоритет имеет TIMERS.md. Размер модели теперь пять слотов;
-standalone audio queue по-прежнему содержит 20 запросов.
+Core хранит warning_armed и session/time_revision только в RAM. Update по
+монотонному now создаёт битовые маски warnings/done; переход DONE очищает
+непотреблённое warning. Take_audio потребляет маски один раз и публикует snapshot
+session/deadline/running/finished для всех пяти слотов. Команда отмены/нового сеанса
+сразу инвалидирует старые события. Сериализация v1 не менялась.
 
-## Audio boundary и независимый heartbeat
+App-owned heartbeat каждые 50 ms продолжает model/audio/storage при скрытом UI,
+Volume и редакторах. Command тоже вызывает service. Весь core/app/UI доступ
+сериализован GUI-lock. Optional submit_audio копирует snapshot каждый цикл,
+включая пустые маски для отзыва событий. Stop/destroy отправляют пустой snapshot
+до освобождения instance. Контракт и ограничения background — INTEGRATION.md.
 
-kitchen_core фиксирует RUNNING→DONE в ограниченном pending_chimes (до 6),
-не меняя порядок или состояние после окончания. При volume=0 события звука
-не накапливаются. kitchen_app создаёт один LVGL timer на start под GUI-lock,
-актуализирует модель каждые 50 ms и потребляет pending ровно один раз. Command
-также дренирует события, чтобы переход на границе дедлайна не потерял уведомление.
-UI собственный timer по-прежнему существует только при видимом root; heartbeat
-не обращается к UI объектам. Destroy удаляет оба timer до освобождения instance.
+Standalone хранит 8 скопированных пакетов и один latest snapshot под коротким
+portMUX; preview — отдельный заменяемый флаг. Worker не берёт GUI-lock, проверяет
+поколения/статусы/deadlines и сроки очереди до старта. Один пакет порождает максимум
+один warning-голос и один DONE-голос. Пакеты разных циклов не объединяются.
+Очередь не хранит app/UI pointers, не требует join при destroy. Обработчик
+ошибок считает/логирует отбрасывания; UI получает ESP_ERR_TIMEOUT при overflow.
 
-Optional platform callbacks не блокируют GUI и не получают app/UI pointers.
-Standalone play_chime копирует token в FreeRTOS очередь 20 элементов с wait=0;
-set_volume делает atomic_store. Внешний worker работает только со своим I2S,
-не берёт GUI-lock и не ждёт app_manager. GPIO30 выключает amp после сигнала;
-хвост тишины длиннее DMA queue не обрывает последние samples. PCM/gain — integer,
-рабочий буфер 1024 bytes, task stack 4096 bytes. Аппаратный lifetime до reset.
+main/audio_mixer.c — переносимое plain-C ядро с 11 фиксированными голосами,
+независимыми позициями, приоритетами DONE > warning > preview, fade-in и
+приглушением preview за 128 samples. Один main/standalone_audio.c worker (stack
+4096 bytes) формирует stereo 256 frames/блок из mono clips и пишет один I2S.
+Буфер выхода 1024 bytes, голоса фиксированы на стеке worker; очередь и snapshots
+статические. Аллокаций внутри rendering/admission нет. int32 sum, int64 gain,
+общий volume, постоянный запас 6 dB для таймеров. Общий peak limiter использует
+64 int32 scratch samples (256 bytes на стеке, без дополнительного I2S буфера),
+Q15 gain с immediate attack и ~50 ms release; PCM16 saturation — последний guard. Preview сохраняет
+исходный gain 0.40. WAV PCM16/44100 читаются без resampling, preview 16000
+линейно интерполируется. После всех голосов 8 блоков тишины выводят DMA до PA-off.
+Новые события проверяются также во время drain. Init выделяет только IDF
+канал/DMA и одну FreeRTOS задачу. Hardware/backend живут до reset.
 
-Сам модуль kitchen_* не инициализирует speaker/I2S/PA. Main отдельно включает
-standalone_audio и бинарный WAV. Реальные хостовые audio/microphone sessions,
-разметка, NVS и host sources не менялись. Поля platform struct добавлены в конец:
-старые designated initializers с NULL audio сохраняют source compatibility,
-но binary ABI размера struct меняется — нужна пересборка. Descriptor ABI прежний.
+Core не включает SDK/FreeRTOS/I2S/LVGL. Portable mixer входит только в standalone
+main, host может реализовать собственный mixer по optional контракту. Embedded
+bridge оставляет audio NULL: известного host audio API для этого snapshot нет.
+
+Прогресс/формат отрицательного elapsed вычисляются в core. UI хранит на каждую
+полосу небольшой interpolation cache; обычный countdown не создаёт animations.
+Смена статуса/сеанса/видимости отменяет cache, callbacks на объекты не добавляются.
+Font adapter хранит 10 фиксированных шрифтов с 128-byte 4bpp буфером минуса
+на каждый размер. Компактная сглаженная капсула создаётся целочисленно один раз
+под GUI-lock. Цифры используют неизменённые bitmap Inter, но получают общую
+максимальную advance width и центрируются в ячейках. Пустой знак U+2007
+резервирует ширину минуса до DONE/при 00:00. Fitting зависит от формата, а не
+конкретных цифр: размер/ширина строки не прыгают при каждой секунде. Новых
+heap allocations, задач и animation callbacks нет. Сгенерированные font-файлы
+не правились.
 
 ## Раскладка A и сохранение
 

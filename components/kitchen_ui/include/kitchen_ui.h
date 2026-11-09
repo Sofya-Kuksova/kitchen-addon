@@ -19,7 +19,10 @@ typedef struct {
     char painted_name[KITCHEN_NAME_MAX + 1];
     int progress, glow, glow_width, border_width, border_opa;
     int inset, radius;
-    bool painted;
+    uint64_t progress_revision, progress_session, progress_started;
+    kitchen_status_t progress_status;
+    int progress_from;
+    bool painted, progress_valid, progress_smoothing;
 } kitchen_card_t;
 typedef struct {
     kitchen_ui_t *ui;

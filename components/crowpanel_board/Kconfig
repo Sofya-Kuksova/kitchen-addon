@@ -24,14 +24,14 @@ config KITCHEN_LCD_V13
     bool "Candidate HW V1.3 9/10.1 inch 1024x600"
 endchoice
 choice KITCHEN_SILICON
-    prompt "Silicon branch"
+    prompt "ESP32-P4 chip revision (independent of PCB)"
     default KITCHEN_SILICON_UNSELECTED
 config KITCHEN_SILICON_UNSELECTED
     bool "Not selected (configuration error)"
 config KITCHEN_SILICON_LEGACY
-    bool "P4 0.x/1.x"
+    bool "ESP32-P4 revision 1.x (also supports 0.x)"
 config KITCHEN_SILICON_V3
-    bool "P4 3.x"
+    bool "ESP32-P4 revision 3.x"
 endchoice
 choice KITCHEN_TOUCH_ADDRESS
     prompt "GT911 reset-selected I2C address"

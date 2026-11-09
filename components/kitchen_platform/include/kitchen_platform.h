@@ -16,9 +16,11 @@ typedef struct {
     uint64_t (*now_ms)(void *context);
     /* Nonblocking enqueue only. Never call synchronous manager transitions here. */
     esp_err_t (*navigate)(void *context, int32_t app_id, kitchen_nav_t intent);
-    /* Optional audio service. Both callbacks must be nonblocking, GUI-safe and
-     * retain no app/UI pointers. The host owns hardware and playback lifetime. */
-    esp_err_t (*play_chime)(void *context);
+    /* Optional pair with set_volume. Nonblocking, GUI-safe, no retained pointers.
+     * Called every service cycle, including empty events: synchronize validity
+     * before enqueueing. Coalesce equal types ONLY within this batch; reject
+     * unstarted stale sessions/deadlines. Host owns mixing and hardware lifetime. */
+    esp_err_t (*submit_audio)(void *context, const kitchen_audio_batch_t *batch);
     esp_err_t (*set_volume)(void *context, uint8_t percent);
     /* Optional, nonblocking preview at the current volume, independent of chime. */
     esp_err_t (*play_volume_preview)(void *context);

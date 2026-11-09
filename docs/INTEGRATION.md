@@ -126,23 +126,49 @@ static constructors, подмен getter, linker hooks и auto-discovery нет.
 
 ## Таймеры, громкость и опциональный audio backend
 
-Configure/getter приложения сохранены. В конец kitchen_platform_t добавлены:
+Configure/getter приложения сохранены. Текущий optional audio-контракт:
 
 ```c
-esp_err_t (*play_chime)(void *context);
+esp_err_t (*submit_audio)(void *context, const kitchen_audio_batch_t *batch);
 esp_err_t (*set_volume)(void *context, uint8_t percent);
 ```
 
-Задать оба callbacks или оставить оба NULL. Они обязаны возвращаться без ожидания:
-play_chime ставит scalar request в собственную очередь host audio, set_volume меняет
-целевой gain/публикует запрос. Запрещены блокирующие playback/codec writes под GUI-lock.
-Context/backend живут дольше kitchen instances. Без audio hooks громкость UI недоступна,
-визуальные таймеры работают. Пример не подменяет несуществующим API сервисы хоста:
-подключение его реальной очереди и принятие политики громкости — отдельная интеграция.
+Задать submit_audio/set_volume вместе либо оставить оба NULL. Audio callbacks
+неблокирующие, вызываются под GUI-lock, не делают codec/I2S writes и не сохраняют
+app/UI pointers. Context/backend живут дольше всех instances. Без audio hooks
+визуальные таймеры работают, управление громкостью недоступно. Bridge явно
+оставляет audio NULL, пока не найден и не проверен фактический host service.
+Новые аудио-API у crow-ha-fw этим изменением не предполагаются.
 
-C struct увеличился: пересобрать вызывающие/использующие компоненты. Старые designated
-initializers компилируются с NULL новыми полями, двоичной совместимости старых объектов
-не заявляется. Core/UI internal interfaces также пересобираются вместе с компонентами.
+`kitchen_audio_batch_t` — копируемый snapshot без указателей:
+
+- warnings/done — bitmask ID−1 новых событий, два различных вида сигналов;
+- session[5] — поколение сеанса, меняется при Cancel/OK/Start/Repeat/Extend;
+- deadline_ms[5], running/finished — текущая валидность всех слотов, даже если
+  события в этом пакете отсутствуют. now_ms и audio clock должны быть из одной
+  монотонной шкалы миллисекунд.
+
+App передаёт snapshot каждые 50 ms и после команд. Хост обязан сначала
+синхронно обновить валидность и исключить не начатые события старых поколений,
+изменённых deadlines и уже не RUNNING warnings; затем скопировать новые события.
+Stop/destroy передают нулевой snapshot, отзывающий ожидающие timer events.
+Проверка валидности и admission должны быть сериализованы: отмена, принятая
+до старта голоса, исключает его. Уже начавшиеся сигналы могут завершиться.
+
+Внутри одного пакета все warnings объединяются в один warning, все done — в
+один DONE. Более поздний пакет не объединять с предыдущим. Хост отвечает за
+смешивание разных видов и пакетов без ожидания окончания текущего clip,
+ограниченные очередь/голоса, приоритет DONE, общий volume, подавление preview,
+устаревание warning (не начинать после deadline), отмену очереди и голосов на
+mute, диагностику переполнений и безопасный PA/DMA lifetime. Ошибки callback
+не повторяются приложением. Standalone реализует эти обязанности самостоятельно;
+реальная host-интеграция и совместное использование его audio/microphone требуют
+отдельной проверки. Форматы файлов и уровни — SOURCES.md/TIMERS.md.
+
+C struct/сигнатура аудио изменились: вызывающие компоненты нужно пересобрать
+вместе. Прежний `.play_chime` необходимо заменить адаптером `.submit_audio`;
+source compatibility старого audio binding и binary compatibility не заявляются.
+Initializers без audio полей по-прежнему оставляют их NULL. Core/UI internal interfaces также пересобираются вместе с компонентами.
 
 App-owned LVGL heartbeat (50 ms) живёт независимо от UI root и фиксирует завершения
 при hide/suspend, пока экземпляр running и GUI worker обслуживает LVGL timers.
@@ -153,9 +179,10 @@ GUI worker или deep sleep. Для точного audio deadline в этих �
 WAV, I2S/PA, audio worker и его очередь входят только в standalone main. Kitchen
 не трогает host hardware/codec/I2C, не добавляет audio SDK packages и не вызывает
 NVS напрямую. Volume сохраняется через optional storage backend; без него только
-RAM, default=40%, mute=0. События завершения потребляются
+RAM, default=40%, mute=0. События warning/DONE потребляются
 один раз, ошибки очереди логируются без повторного проигрывания. DONE/elapsed сохраняются
-до Acknowledge. Публичный getter/descriptor app_manager и host bridge не менялись.
+до Acknowledge. Публичный getter/descriptor app_manager сохранён; bridge обновлён
+для явного отсутствия аудиосервиса.
 
 LVGL должен включать LABEL, BTN, ROLLER, TEXTAREA, KEYBOARD, SLIDER и текстовые
 bitmap-шрифты. LV_FONT_DEFAULT должен содержать стандартные LVGL symbols (в том числе SETTINGS).
@@ -164,7 +191,7 @@ Speaker рисуется прежними примитивами, No icon исп
 ### Optional volume preview hook
 
 В конец kitchen_platform_t добавлен play_volume_preview(void *context), возвращающий
-esp_err_t. Callback необязателен независимо от пары play_chime/set_volume; без него
+esp_err_t. Callback необязателен независимо от пары submit_audio/set_volume; без него
 громкость меняется без звука preview. Он неблокирующий, не сохраняет UI/app pointers.
 KITCHEN_PREVIEW_VOLUME обрабатывается kitchen_app, не изменяет модель core и не
 использует timer completion events. Struct ABI снова требует совместной пересборки.

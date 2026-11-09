@@ -119,7 +119,7 @@ docs/VALIDATION.md
 
 Разделить board revision, LCD-параметры и silicon revision. Не выводить ревизию кристалла из номера PCB. Проверять допустимые сочетания в Kconfig/на этапе конфигурации, а не молча выбирать произвольный профиль. Не писать собственное автоопределение PCB без надёжного аппаратного признака.
 
-Пример состава: `sdkconfig.defaults;config/board-v1.3.defaults;config/lcd-v1.3.defaults;config/silicon-v3.defaults`.
+Пример состава: `sdkconfig.defaults;config/board-v1.3.defaults;config/lcd-v1.3.defaults;config/silicon-p4-rev3x.defaults`.
 
 | PCB | SDIO D0/D1/D2/D3 | Беспроводной слот A/B | Основание |
 | --- | --- | --- | --- |
@@ -151,7 +151,7 @@ SDIO и беспроводной слот — разные интерфейсы.
 
 ### 5.3. Ревизии кристалла
 
-Подготовить отдельные silicon-профили для P4 <3.0 и P4 v3.x. В legacy явно задавать CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y; для v3.x выключать. Минимальную поддерживаемую ревизию задать по реальным логам/целевым устройствам; не исключить старые 0.x автоматически выбором min=1.0. Список допустимых silicon revisions документировать.
+Подготовить отдельные silicon-профили для P4 <3.0 и ESP32-P4 rev 3.x. В legacy явно задавать CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y; для v3.x выключать. Минимальную поддерживаемую ревизию задать по реальным логам/целевым устройствам; не исключить старые 0.x автоматически выбором min=1.0. Список допустимых silicon revisions документировать.
 
 Источник DSI PHY clock выбирать по целевой silicon-ветке; в проекте коллеги используются DEFAULT_LEGACY для <3.0 и DEFAULT для >=3.0. Имена и доступность сверить с IDF 6.0.3.
 
@@ -181,9 +181,9 @@ README: назначение baseline, зафиксированный стек, 
 . /Users/sonyakuks/esp/esp-idf-v6.0.3/export.sh
 cd /Users/sonyakuks/esp/kitchen_addon_forHA/kitchen-addon
 idf.py --version
-idf.py -B build-hw1.3-p4v3 \
-  -D SDKCONFIG=build-hw1.3-p4v3/sdkconfig \
-  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;config/board-v1.3.defaults;config/lcd-v1.3.defaults;config/silicon-v3.defaults" \
+idf.py -B build-hw1.3-p4-rev3x \
+  -D SDKCONFIG=build-hw1.3-p4-rev3x/sdkconfig \
+  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;config/board-v1.3.defaults;config/lcd-v1.3.defaults;config/silicon-p4-rev3x.defaults" \
   build
 ```
 

@@ -71,9 +71,9 @@ static const crowpanel_board_config_t s_config = {
     .vbp = 23, .vpw = 10, .vfp = 12,
 #endif
 #if CONFIG_KITCHEN_SILICON_LEGACY
-    .silicon_name = "P4 legacy 0.x/1.x",
+    .silicon_name = "ESP32-P4 rev 1.x (0.x compatible)",
 #else
-    .silicon_name = "P4 v3.x",
+    .silicon_name = "ESP32-P4 rev 3.x",
 #endif
 #if CONFIG_KITCHEN_TOUCH_ADDRESS_14
     .touch_address = 0x14,

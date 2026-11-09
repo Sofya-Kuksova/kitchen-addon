@@ -159,39 +159,27 @@ app_manager при embedded-сборке. Для приватного standalone
 основания назначать хосту новую лицензию. Копия заголовка не поставляется в репозитории;
 при дальнейшей дистрибуции контрактов нужно сохранить условия правообладателя.
 
-## Kitchen chime и аудио reference (обновлено 05.11.2026)
+## Timer audio assets (09.11.2026)
 
-- User input: /Users/sonyakuks/Downloads/soundreality-bell-sound-effect-613873.mp3.
-- Source MP3: stereo 48000 Hz, decoded duration 4.824 seconds; original unchanged.
-- Source SHA-256: e21b0eed44a355efb01ebdb215ae4eec91add6a6efb0766867665f0a0861f33f.
-- Runtime asset: main/assets/kitchen_timer_chime.wav; 183500 bytes.
-- WAV SHA-256: 45a52177178de3d31a9d2130edeeeeb399bc1c1c82df6a11683828d335ab431e.
-- PCM mono, 16-bit little-endian, 44100 Hz, 91728 frames, 2.08 seconds.
-- Trailing signal stays below -60 dB after 1.978646 s. Trim at 2.08 s retains
-  the bell decay; final 50 ms fade avoids an abrupt end. No leading silence
-  >=100 ms was detected at -50 dB, so the start was retained.
-- Mono is the average of left/right. Resampling briefly peaks at +0.035 dBFS
-  in float, so gain -0.6 dB is applied after resampling to avoid PCM16 clipping.
-  Final absolute sample peak 30706, no saturated samples, last sample zero.
-- The old 1.55-s WAV was replaced at the same embedded path; CMake symbols,
-  parser, worker, software volume and preview asset are unchanged. Asset growth
-  is 46746 bytes; actual firmware size is pending the owner's manual build.
+Два WAV предоставлены владельцем в текущем запросе и скопированы побайтно
+из `/Users/sonyakuks/Downloads/`. Ни конвертация, ни нормализация, ни изменение
+высоты тона к этим файлам не применялись.
 
-Reproduction from the repository root (media conversion only, not a firmware build):
+| Runtime asset в main/assets | Формат | Frames / seconds | SHA-256 |
+| --- | --- | --- | --- |
+| timer_warning_5s_double_bell.wav | PCM16 LE mono 44100 Hz | 23814 / 0.54 | 76cc2d8849c5bc099b75879718c2ae56585d5b11f5a84e24a4bcb53ba5f2143d |
+| timer_done_single_bell.wav | PCM16 LE mono 44100 Hz | 91728 / 2.08 | ab2132a7512c5628249fa26e9a82edbadcfe250a4ef1ffe6ed87fcb26a7b62d0 |
 
-```sh
-ffmpeg -y -i /Users/sonyakuks/Downloads/soundreality-bell-sound-effect-613873.mp3 \
-  -map_metadata -1 \
-  -af 'pan=mono|c0=0.5*c0+0.5*c1,atrim=end=2.08,asetpts=PTS-STARTPTS,aresample=44100,volume=-0.6dB,afade=t=out:st=2.03:d=0.05' \
-  -ar 44100 -ac 1 -c:a pcm_s16le -bitexact main/assets/kitchen_timer_chime.wav
-```
+Прежний kitchen_timer_chime.wav удалён из runtime assets и EMBED_FILES. Старый
+MP3/его conversion recipe больше не являются источником текущего сигнала.
+Суммарный размер WAV увеличился на 47672 bytes; firmware size проверяется
+пользовательской сборкой. Разница уровней новых WAV сохраняется. Runtime mixer применяет одинаковый
+постоянный запас 6 dB к обоим, master volume, общий peak limiter и PCM16 guard. Источник лицензии
+новых пользовательских WAV этим изменением не устанавливается.
 
-- Reference (read only): Product Explainer components/demo_audio/src/demo_audio.cpp,
-  demo_ui/src/demo_speaker_check.c, demo_ui/src/demo_bg_motion.c,
-  espressif__esp32_p4_function_ev_board/esp32_p4_function_ev_board.c and my_codec.c.
-  BCLK22, WS21, DOUT23, PA30 active-low. No source/vendor code copied or modified.
-  The new standalone backend uses IDF I2S directly and software gain; no microphone,
-  NVS, ES8311 control bus or esp_codec_dev dependency is introduced.
+Reference GPIO остаётся прежним: BCLK22, WS21, DOUT23, PA30 active-low.
+Standalone использует один прямой IDF I2S; host/vendor код не копируется и
+не меняется, microphone/ES8311 control/esp_codec_dev dependencies не добавляются.
 
 Volume preview: main/assets/volume_release.pcm, unchanged copy of Product Explainer
 components/demo_audio/assets/sfx/volume_release.pcm. 34596 bytes, 17298 samples,

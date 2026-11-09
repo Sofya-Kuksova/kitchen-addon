@@ -128,12 +128,20 @@ static lv_obj_t *button(kitchen_ui_t *ui, lv_obj_t *parent, const char *value,
     }
     lv_obj_t *obj = lv_btn_create(parent);
     if (!obj) { ui->failed = true; return NULL; }
-    if (action == A_ICON) {
-        /* LVGL 8.4 enumerates every style transition and dereferences its
-         * descriptor. Remove the theme (including grow/transitions), rather
-         * than trying to disable transitions with a NULL descriptor. */
+    bool overlay_button = action != A_CARD && action != A_VOLUME && action != A_RETRY;
+    if (overlay_button) {
+        /* Theme grow/transition styles clip buttons at overlay container edges.
+         * Own these styles, as for icon buttons: never install a NULL transition
+         * descriptor (LVGL 8.4 dereferences every transition it enumerates). */
         lv_obj_remove_style_all(obj);
         lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
+        if (action != A_ICON) {
+            lv_obj_set_ext_click_area(obj, 4); /* Preset gaps are 8 px: no overlap. */
+            lv_obj_set_style_bg_color(obj, lv_color_mix(lv_color_hex(LIGHT),
+                lv_color_hex(accent ? ACCENT : BUTTON), LV_OPA_20), LV_STATE_PRESSED);
+            lv_obj_set_style_bg_color(obj, lv_color_mix(lv_color_hex(LIGHT),
+                lv_color_hex(ACCENT), LV_OPA_20), LV_STATE_CHECKED | LV_STATE_PRESSED);
+        }
     }
     lv_obj_set_pos(obj, x, y);
     lv_obj_set_size(obj, w, h);
@@ -167,21 +175,112 @@ static void format_time(char *buffer, size_t size, uint64_t seconds)
         (unsigned)(seconds / 60 % 60), (unsigned)(seconds % 60));
     else snprintf(buffer, size, "%02u:%02u", (unsigned)(seconds / 60), (unsigned)(seconds % 60));
 }
-static void time_value(lv_obj_t *label, uint64_t seconds)
+/* Keep generated Inter bitmaps intact. The adapter adds a compact rounded
+ * minus and an equally wide blank sign, and centers digits in tabular cells.
+ * Fixed storage, initialized once under GUI-lock; no allocations in drawing. */
+typedef struct {
+    lv_font_t font;
+    const lv_font_t *base;
+    unsigned digit_width, minus_width, minus_height, sign_width;
+    int minus_y;
+    uint8_t minus_bitmap[128]; /* 4 bpp, largest current glyph is 16 x 10. */
+} kitchen_time_font_t;
+static bool signed_glyph(const lv_font_t *font, lv_font_glyph_dsc_t *glyph, uint32_t code, uint32_t next)
+{
+    const kitchen_time_font_t *time = font->dsc;
+    if (code == 0x2212 || code == 0x2007) {
+        *glyph = (lv_font_glyph_dsc_t){.adv_w = time->sign_width, .bpp = 4};
+        if (code == 0x2212) {
+            glyph->box_w = time->minus_width;
+            glyph->box_h = time->minus_height;
+            glyph->ofs_y = time->minus_y;
+        }
+        return true;
+    }
+    if (!time->base->get_glyph_dsc(time->base, glyph, code, next)) return false;
+    if (code >= '0' && code <= '9') {
+        glyph->ofs_x += ((int)time->digit_width - (int)glyph->adv_w) / 2;
+        glyph->adv_w = time->digit_width;
+    }
+    return true;
+}
+static const uint8_t *signed_bitmap(const lv_font_t *font, uint32_t code)
+{
+    const kitchen_time_font_t *time = font->dsc;
+    if (code == 0x2212) return time->minus_bitmap;
+    if (code == 0x2007) return NULL; /* Reserved sign cell, no ink. */
+    return time->base->get_glyph_bitmap(time->base, code);
+}
+static const lv_font_t *signed_time_font(unsigned index, const lv_font_t *base)
+{
+    static kitchen_time_font_t fonts[10];
+    kitchen_time_font_t *time = &fonts[index];
+    if (!time->base) {
+        lv_font_glyph_dsc_t zero = {0};
+        base->get_glyph_dsc(base, &zero, '0', 0);
+        time->minus_width = zero.box_h / 5;
+        time->minus_height = zero.box_h / 8;
+        if (time->minus_width < 6) time->minus_width = 6;
+        if (time->minus_height < 3) time->minus_height = 3;
+        if (time->minus_width * time->minus_height > sizeof(time->minus_bitmap) * 2) return base;
+        time->minus_y = zero.ofs_y + ((int)zero.box_h - (int)time->minus_height) / 2;
+        time->sign_width = time->minus_width + 2;
+        for (unsigned code = '0'; code <= '9'; ++code) {
+            lv_font_glyph_dsc_t digit = {0};
+            base->get_glyph_dsc(base, &digit, code, 0);
+            if (digit.adv_w > time->digit_width) time->digit_width = digit.adv_w;
+        }
+        /* Supersampled capsule: round ends and antialiased 4-bit coverage.
+         * Coordinates are in eighths of a pixel; bounded integer arithmetic. */
+        int radius = (int)time->minus_height * 4;
+        int right = (int)time->minus_width * 8 - radius;
+        for (unsigned y = 0; y < time->minus_height; ++y) {
+            for (unsigned x = 0; x < time->minus_width; ++x) {
+                unsigned coverage = 0;
+                for (int sy = 0; sy < 4; ++sy) {
+                    for (int sx = 0; sx < 4; ++sx) {
+                        int px = (int)x * 8 + sx * 2 + 1;
+                        int dx = px < radius ? px - radius : px > right ? px - right : 0;
+                        int dy = (int)y * 8 + sy * 2 + 1 - radius;
+                        if (dx * dx + dy * dy <= radius * radius) ++coverage;
+                    }
+                }
+                unsigned pixel = y * time->minus_width + x;
+                unsigned alpha = (coverage * 15 + 8) / 16;
+                time->minus_bitmap[pixel / 2] |= (uint8_t)(alpha << (pixel % 2 ? 0 : 4));
+            }
+        }
+        time->base = base;
+        time->font = *base;
+        time->font.dsc = time;
+        time->font.get_glyph_dsc = signed_glyph;
+        time->font.get_glyph_bitmap = signed_bitmap;
+    }
+    return &time->font;
+}
+static void time_value(lv_obj_t *label, const kitchen_timer_t *timer, uint64_t current)
 {
     if (!label) return;
     char value[32];
-    format_time(value, sizeof(value), seconds);
+    kitchen_core_format_time(value, sizeof(value), timer, current);
+    /* U+2007 reserves exactly the minus advance before DONE and at 00:00.
+     * Together with tabular digits this makes fitting depend only on format
+     * length, never the current seconds or the appearance of the minus. */
+    if ((unsigned char)value[0] != 0xe2 && strlen(value) + 3 < sizeof(value)) {
+        memmove(value + 3, value, strlen(value) + 1);
+        memcpy(value, "\xe2\x80\x87", 3);
+    }
     if (!strcmp(lv_label_get_text(label), value)) return;
     const lv_font_t *fonts[] = {&kitchen_font_112, &kitchen_font_72, &kitchen_font_64,
         &kitchen_font_56, &kitchen_font_48, &kitchen_font_36, &kitchen_text_32,
         &kitchen_text_24, &kitchen_text_20, &kitchen_text_18};
-    const lv_font_t *font = &kitchen_text_18;
+    const lv_font_t *font = signed_time_font(9, &kitchen_text_18);
     bool fits = false;
     for (unsigned i = 0; i < sizeof(fonts) / sizeof(fonts[0]); ++i) {
         lv_point_t extent;
-        lv_txt_get_size(&extent, value, fonts[i], 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
-        if (extent.x <= lv_obj_get_width(label) && extent.y <= lv_obj_get_height(label)) { font = fonts[i]; fits = true; break; }
+        const lv_font_t *candidate = signed_time_font(i, fonts[i]);
+        lv_txt_get_size(&extent, value, candidate, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+        if (extent.x <= lv_obj_get_width(label) && extent.y <= lv_obj_get_height(label)) { font = candidate; fits = true; break; }
     }
     /* Extremely long DONE hours still remain readable without wrapping at a
      * day boundary or truncating digits. This never affects selectable times. */
@@ -373,6 +472,7 @@ static void card_click(lv_event_t *event)
 {
     kitchen_card_t *card = lv_event_get_user_data(event);
     kitchen_ui_t *ui = card->ui;
+    if (lv_event_get_target(event) != card->object) return;
     if (ui->active && !ui->modal && !ui->failed) open_timer(ui, card->id);
 }
 static void make_card(kitchen_ui_t *ui, unsigned index)
@@ -429,6 +529,9 @@ static void make_card(kitchen_ui_t *ui, unsigned index)
     card->action = button(ui, card->object, "", inset, button_y, w - 2 * inset, button_h, false, A_CARD, index + 1);
     make_primary_icon(ui, card->action);
     if (card->action) {
+        /* Catch imprecise edge taps before the clickable card can own the
+         * gesture. LVGL already supplies PRESS_LOCK to these child buttons. */
+        lv_obj_set_ext_click_area(card->action, 8);
         lv_obj_set_style_radius(card->action, button_h / 2, 0);
         lv_obj_set_style_bg_opa(card->action, LV_OPA_70, 0);
         lv_obj_set_style_border_width(card->action, 1, 0);
@@ -436,18 +539,39 @@ static void make_card(kitchen_ui_t *ui, unsigned index)
         lv_obj_set_style_border_opa(card->action, LV_OPA_40, 0);
     }
 }
-static int progress(const kitchen_timer_t *timer, uint64_t current)
+/* One interpolation state per visible bar, driven by the existing UI tick.
+ * Only manual time_revision changes start a transition; countdown never queues
+ * animations or callbacks. State/pause/session changes snap and cancel it. */
+static void update_progress(kitchen_card_t *card, const kitchen_timer_t *timer, uint64_t current)
 {
-    if (timer->status != KITCHEN_RUNNING && timer->status != KITCHEN_PAUSED) return 0;
-    uint64_t ms = kitchen_core_remaining(timer, current);
-    return timer->span_ms ? (int)(ms * 1000 / timer->span_ms) : 0;
+    int target = (int)kitchen_core_progress(timer, current);
+    bool same = card->progress_valid && card->progress_session == timer->session &&
+        card->progress_status == timer->status;
+    if (!same) card->progress_smoothing = false;
+    else if (card->progress_revision != timer->time_revision &&
+        (timer->status == KITCHEN_RUNNING || timer->status == KITCHEN_PAUSED)) {
+        card->progress_from = card->progress;
+        card->progress_started = current;
+        card->progress_smoothing = true;
+    }
+    int value = target;
+    if (card->progress_smoothing) {
+        uint64_t elapsed = current - card->progress_started;
+        if (elapsed >= 180) card->progress_smoothing = false;
+        else value = card->progress_from + (target - card->progress_from) * (int)elapsed / 180;
+    }
+    if (!card->progress_valid || value != card->progress) progress_value(card->track, card->fill, value);
+    card->progress = value;
+    card->progress_revision = timer->time_revision;
+    card->progress_session = timer->session;
+    card->progress_status = timer->status;
+    card->progress_valid = true;
 }
 static void update_card(kitchen_card_t *card, uint64_t current)
 {
     kitchen_timer_t *timer = kitchen_core_find(card->ui->state, card->id);
     if (!timer || !card->object) return;
-    uint64_t ms = kitchen_core_remaining(timer, current);
-    time_value(card->time, timer->status == KITCHEN_DONE ? kitchen_core_elapsed(timer, current) / 1000 : (ms + 999) / 1000);
+    time_value(card->time, timer, current);
     if (!card->painted || strcmp(timer->name, card->painted_name) || timer->icon != card->painted_icon) {
         label_value(card->name, timer->name);
         visible(card->icon, timer->icon != KITCHEN_ICON_NONE);
@@ -464,8 +588,7 @@ static void update_card(kitchen_card_t *card, uint64_t current)
         primary_caption(card->action, timer->status, geometry[card->id - 1][2], geometry[card->id - 1][3] < 240);
         card->painted_status = timer->status;
     }
-    int value = progress(timer, current);
-    if (value != card->progress) { progress_value(card->track, card->fill, value); card->progress = value; }
+    update_progress(card, timer, current);
     update_glow(card, timer, current);
     card->painted = true;
 }
@@ -941,6 +1064,7 @@ static void refresh_overlay(kitchen_ui_t *ui)
         }
     }
     if (ui->editor != EDIT_NONE) {
+        ui->overlay_card.progress_valid = ui->overlay_card.progress_smoothing = false;
         visible(lv_obj_get_child(ui->apply, 1), ui->editor == EDIT_SETUP);
         if (ui->editor == EDIT_REMAINING && done && !ui->completion_shown) {
             ui->completion_shown = true;
@@ -959,9 +1083,11 @@ static void refresh_overlay(kitchen_ui_t *ui)
             }
         }
     } else {
-        time_value(ui->time, done ? kitchen_core_elapsed(timer, current) / 1000 : (ms + 999) / 1000);
+        time_value(ui->time, timer, current);
         label_value(ui->status, done ? "DONE" : timer->status == KITCHEN_PAUSED ? "PAUSED" : "");
-        progress_value(ui->track, ui->fill, progress(timer, current));
+        ui->overlay_card.track = ui->track;
+        ui->overlay_card.fill = ui->fill;
+        update_progress(&ui->overlay_card, timer, current);
         visible(ui->minus, !done);
         visible(ui->repeat, done);
         visible(ui->secondary, timer->status == KITCHEN_RUNNING || timer->status == KITCHEN_PAUSED);
@@ -1126,8 +1252,16 @@ static void apply_editor(kitchen_ui_t *ui)
         kitchen_command_t cmd = {.kind = KITCHEN_CREATE, .id = ui->selected, .seconds = (int32_t)seconds,
             .name = ui->draft_name, .icon = ui->draft_icon};
         if (ui->command(ui->context, &cmd)) animate_overlay(ui, false);
-    } else if (send(ui, timer->status == KITCHEN_DONE ? KITCHEN_EXTEND : KITCHEN_SET_TIME, (int)seconds))
-        set_editor(ui, EDIT_NONE, 0);
+    } else {
+        /* The bar was hidden while editing. Seed its pre-edit model position
+         * so Apply can transition to the new fraction when it becomes visible. */
+        ui->overlay_card.track = ui->track;
+        ui->overlay_card.fill = ui->fill;
+        ui->overlay_card.progress_valid = false;
+        update_progress(&ui->overlay_card, timer, now(ui));
+        if (send(ui, timer->status == KITCHEN_DONE ? KITCHEN_EXTEND : KITCHEN_SET_TIME, (int)seconds))
+            set_editor(ui, EDIT_NONE, 0);
+    }
 }
 static void action_event(lv_event_t *event)
 {
@@ -1138,6 +1272,16 @@ static void action_event(lv_event_t *event)
     if (ui->icons_open && binding.action != A_ICON && binding.action != A_ICON_TOGGLE && binding.action != A_CLOSE) {
         toggle_icons(ui, false);
         return;
+    }
+    if (binding.action == A_CARD) {
+        lv_indev_t *indev = lv_indev_get_act();
+        if (indev && lv_indev_get_type(indev) == LV_INDEV_TYPE_POINTER) {
+            lv_point_t point;
+            lv_indev_get_point(indev, &point);
+            /* PRESS_LOCK prevents transfer to the card; releasing outside the
+             * padded hit area cancels the action instead of opening an overlay. */
+            if (!lv_obj_hit_test(lv_event_get_current_target(event), &point)) return;
+        }
     }
     /* Use the visible primary action even if a deadline was crossed meanwhile. */
     kitchen_status_t shown = ui->shown_status;
@@ -1201,6 +1345,7 @@ static void refresh(kitchen_ui_t *ui)
          * Core/heartbeat/audio/storage continue independently of this cache. */
         if (!ui->modal || ui->cards[i].painted_status != ui->state->timers[i].status)
             update_card(&ui->cards[i], current);
+        else ui->cards[i].progress_valid = ui->cards[i].progress_smoothing = false;
     }
     refresh_overlay(ui);
     bool error = kitchen_settings_failed(ui->settings);
@@ -1261,6 +1406,9 @@ void kitchen_ui_set_active(kitchen_ui_t *ui, bool active)
     active = active && ui->root;
     if (ui->active == active) return;
     if (!active) {
+        for (unsigned i = 0; i < KITCHEN_MAX_TIMERS; ++i)
+            ui->cards[i].progress_valid = ui->cards[i].progress_smoothing = false;
+        ui->overlay_card.progress_valid = ui->overlay_card.progress_smoothing = false;
         finish_volume(ui, false);
         lv_anim_del(ui, NULL);
         if (ui->closing) close_modal(ui);

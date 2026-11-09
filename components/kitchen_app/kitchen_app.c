@@ -38,12 +38,11 @@ static void service(kitchen_app_t *app)
 {
     kitchen_settings_poll(&app->settings);
     kitchen_core_update(&app->state, now_ms(app));
-    uint8_t count = app->state.pending_chimes;
-    app->state.pending_chimes = 0;
-    for (unsigned i = 0; i < count; ++i) {
-        if (!app->state.volume_percent || !app->platform.play_chime) continue;
-        esp_err_t ret = app->platform.play_chime(app->platform.context);
-        if (ret != ESP_OK) ESP_LOGW("kitchen", "chime enqueue failed: %s", esp_err_to_name(ret));
+    kitchen_audio_batch_t batch;
+    kitchen_core_take_audio(&app->state, &batch);
+    if (app->platform.submit_audio) {
+        esp_err_t ret = app->platform.submit_audio(app->platform.context, &batch);
+        if (ret != ESP_OK) ESP_LOGW("kitchen", "audio enqueue failed: %s", esp_err_to_name(ret));
     }
 }
 static void heartbeat(lv_timer_t *timer)
@@ -113,6 +112,14 @@ static esp_err_t create(app_base_t *self)
     ++s_instances;
     return ESP_OK;
 }
+static void invalidate_audio(kitchen_app_t *app)
+{
+    app->state.pending_warnings = app->state.pending_done = 0;
+    if (app->platform.submit_audio) {
+        const kitchen_audio_batch_t empty = {0};
+        (void)app->platform.submit_audio(app->platform.context, &empty);
+    }
+}
 static esp_err_t destroy(app_base_t *self)
 {
     kitchen_app_t *app = (kitchen_app_t *)self;
@@ -122,6 +129,7 @@ static esp_err_t destroy(app_base_t *self)
     if (ret != ESP_OK) { ESP_LOGE("kitchen", "platform violated infinite-lock contract"); abort(); }
     if (app->heartbeat) { lv_timer_del(app->heartbeat); app->heartbeat = NULL; }
     kitchen_ui_destroy(&app->ui);
+    invalidate_audio(app);
     app->running = false;
     app->platform.unlock(app->platform.context);
     --s_instances;
@@ -141,6 +149,7 @@ static esp_err_t lifecycle(app_base_t *self, unsigned operation)
     switch (operation) {
     case 0: app->running = true; app->paused = false; app->suspended = false; break;
     case 1:
+        invalidate_audio(app);
         app->running = false; app->fullscreen = false;
         if (app->heartbeat) lv_timer_pause(app->heartbeat);
         kitchen_ui_destroy(&app->ui); break;
@@ -190,7 +199,7 @@ static esp_err_t create_content(app_base_t *self, lv_obj_t *container, app_view_
     if (view != APP_VIEW_FULLSCREEN) return ESP_ERR_NOT_SUPPORTED;
     kitchen_app_t *app = (kitchen_app_t *)self;
     esp_err_t ret = kitchen_ui_create(&app->ui, container, &app->state, &app->settings, command, now_ms, back,
-        app->platform.play_chime && app->platform.set_volume, app);
+        app->platform.submit_audio && app->platform.set_volume, app);
     if (ret == ESP_OK) update_view(app);
     return ret;
 }

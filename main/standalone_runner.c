@@ -25,7 +25,7 @@ esp_err_t standalone_runner_run(void)
     esp_err_t audio = standalone_audio_init();
     if (audio != ESP_OK) ESP_LOGW("kitchen", "sound unavailable: %s", esp_err_to_name(audio));
     const kitchen_platform_t platform = {.lock = lock, .unlock = unlock, .now_ms = now_ms, .navigate = navigate,
-        .play_chime = audio == ESP_OK ? standalone_audio_chime : NULL,
+        .submit_audio = audio == ESP_OK ? standalone_audio_submit : NULL,
         .set_volume = audio == ESP_OK ? standalone_audio_volume : NULL,
         .play_volume_preview = audio == ESP_OK ? standalone_audio_preview : NULL,
         .storage = standalone_storage_init()};

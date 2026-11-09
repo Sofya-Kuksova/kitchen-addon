@@ -38,89 +38,101 @@ python3 tools/prepare_host_contract.py \
 Git. Условия дистрибуции host-контрактов отдельно описаны в SOURCES. Агент скрипт
 копирования не запускал. Если hash отличается — сначала нужен статический пересмотр ABI.
 
+## Обозначения ревизий чипа
+
+`p4-rev1x` — ESP32-P4 revision 1.x, `p4-rev3x` — revision 3.x;
+номер HW обозначает отдельно версию PCB. Профиль rev1x сохраняет поддержку
+0.x и прежние параметры. Внутренние CONFIG_KITCHEN_SILICON_LEGACY/V3
+сохранены для совместимости существующих sdkconfig.
+
+Прежние silicon-legacy.defaults/silicon-v3.defaults переименованы в
+silicon-p4-rev1x.defaults/silicon-p4-rev3x.defaults. В собственных командах
+обновите пути defaults. Существующие build-каталоги и архивы не переименованы;
+их исторические имена в VALIDATION/FLASHER оставлены как есть.
+
 ## Восемь новых конфигураций
 
 Каждая команда предполагает **новый** build-каталог. Defaults не переписывают
 существующий sdkconfig. Chip revision выбирается независимо от PCB. Команды не
 доказывают физическую совместимость всех сочетаний; статусы пока UNTESTED.
 
-### HW V1.0, P4 legacy
+### HW V1.0, ESP32-P4 rev 1.x
 
 ```bash
-idf.py -B build-compat-hw1.0-p4legacy \
+idf.py -B build-compat-hw1.0-p4-rev1x \
   -D KITCHEN_HOST_CONTRACT_DIR="$PWD/.host-contract" \
-  -D SDKCONFIG=build-compat-hw1.0-p4legacy/sdkconfig \
-  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;config/board-v1.0.defaults;config/lcd-legacy.defaults;config/silicon-legacy.defaults" \
+  -D SDKCONFIG=build-compat-hw1.0-p4-rev1x/sdkconfig \
+  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;config/board-v1.0.defaults;config/lcd-legacy.defaults;config/silicon-p4-rev1x.defaults" \
   build
 ```
 
-### HW V1.0, P4 v3
+### HW V1.0, ESP32-P4 rev 3.x
 
 ```bash
-idf.py -B build-compat-hw1.0-p4v3 \
+idf.py -B build-compat-hw1.0-p4-rev3x \
   -D KITCHEN_HOST_CONTRACT_DIR="$PWD/.host-contract" \
-  -D SDKCONFIG=build-compat-hw1.0-p4v3/sdkconfig \
-  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;config/board-v1.0.defaults;config/lcd-legacy.defaults;config/silicon-v3.defaults" \
+  -D SDKCONFIG=build-compat-hw1.0-p4-rev3x/sdkconfig \
+  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;config/board-v1.0.defaults;config/lcd-legacy.defaults;config/silicon-p4-rev3x.defaults" \
   build
 ```
 
-### HW V1.1, P4 legacy
+### HW V1.1, ESP32-P4 rev 1.x
 
 ```bash
-idf.py -B build-compat-hw1.1-p4legacy \
+idf.py -B build-compat-hw1.1-p4-rev1x \
   -D KITCHEN_HOST_CONTRACT_DIR="$PWD/.host-contract" \
-  -D SDKCONFIG=build-compat-hw1.1-p4legacy/sdkconfig \
-  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;config/board-v1.1.defaults;config/lcd-legacy.defaults;config/silicon-legacy.defaults" \
+  -D SDKCONFIG=build-compat-hw1.1-p4-rev1x/sdkconfig \
+  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;config/board-v1.1.defaults;config/lcd-legacy.defaults;config/silicon-p4-rev1x.defaults" \
   build
 ```
 
-### HW V1.1, P4 v3
+### HW V1.1, ESP32-P4 rev 3.x
 
 ```bash
-idf.py -B build-compat-hw1.1-p4v3 \
+idf.py -B build-compat-hw1.1-p4-rev3x \
   -D KITCHEN_HOST_CONTRACT_DIR="$PWD/.host-contract" \
-  -D SDKCONFIG=build-compat-hw1.1-p4v3/sdkconfig \
-  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;config/board-v1.1.defaults;config/lcd-legacy.defaults;config/silicon-v3.defaults" \
+  -D SDKCONFIG=build-compat-hw1.1-p4-rev3x/sdkconfig \
+  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;config/board-v1.1.defaults;config/lcd-legacy.defaults;config/silicon-p4-rev3x.defaults" \
   build
 ```
 
-### HW V1.2, P4 legacy
+### HW V1.2, ESP32-P4 rev 1.x
 
 ```bash
-idf.py -B build-compat-hw1.2-p4legacy \
+idf.py -B build-compat-hw1.2-p4-rev1x \
   -D KITCHEN_HOST_CONTRACT_DIR="$PWD/.host-contract" \
-  -D SDKCONFIG=build-compat-hw1.2-p4legacy/sdkconfig \
-  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;config/board-v1.2.defaults;config/lcd-legacy.defaults;config/silicon-legacy.defaults" \
+  -D SDKCONFIG=build-compat-hw1.2-p4-rev1x/sdkconfig \
+  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;config/board-v1.2.defaults;config/lcd-legacy.defaults;config/silicon-p4-rev1x.defaults" \
   build
 ```
 
-### HW V1.2, P4 v3
+### HW V1.2, ESP32-P4 rev 3.x
 
 ```bash
-idf.py -B build-compat-hw1.2-p4v3 \
+idf.py -B build-compat-hw1.2-p4-rev3x \
   -D KITCHEN_HOST_CONTRACT_DIR="$PWD/.host-contract" \
-  -D SDKCONFIG=build-compat-hw1.2-p4v3/sdkconfig \
-  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;config/board-v1.2.defaults;config/lcd-legacy.defaults;config/silicon-v3.defaults" \
+  -D SDKCONFIG=build-compat-hw1.2-p4-rev3x/sdkconfig \
+  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;config/board-v1.2.defaults;config/lcd-legacy.defaults;config/silicon-p4-rev3x.defaults" \
   build
 ```
 
-### HW V1.3, P4 legacy
+### HW V1.3, ESP32-P4 rev 1.x
 
 ```bash
-idf.py -B build-compat-hw1.3-p4legacy \
+idf.py -B build-compat-hw1.3-p4-rev1x \
   -D KITCHEN_HOST_CONTRACT_DIR="$PWD/.host-contract" \
-  -D SDKCONFIG=build-compat-hw1.3-p4legacy/sdkconfig \
-  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;config/board-v1.3.defaults;config/lcd-v1.3.defaults;config/silicon-legacy.defaults" \
+  -D SDKCONFIG=build-compat-hw1.3-p4-rev1x/sdkconfig \
+  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;config/board-v1.3.defaults;config/lcd-v1.3.defaults;config/silicon-p4-rev1x.defaults" \
   build
 ```
 
-### HW V1.3, P4 v3
+### HW V1.3, ESP32-P4 rev 3.x
 
 ```bash
-idf.py -B build-compat-hw1.3-p4v3 \
+idf.py -B build-compat-hw1.3-p4-rev3x \
   -D KITCHEN_HOST_CONTRACT_DIR="$PWD/.host-contract" \
-  -D SDKCONFIG=build-compat-hw1.3-p4v3/sdkconfig \
-  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;config/board-v1.3.defaults;config/lcd-v1.3.defaults;config/silicon-v3.defaults" \
+  -D SDKCONFIG=build-compat-hw1.3-p4-rev3x/sdkconfig \
+  -D SDKCONFIG_DEFAULTS="sdkconfig.defaults;config/board-v1.3.defaults;config/lcd-v1.3.defaults;config/silicon-p4-rev3x.defaults" \
   build
 ```
 

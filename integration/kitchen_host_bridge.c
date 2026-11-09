@@ -1,4 +1,5 @@
 #include "kitchen_host_bridge.h"
+#include <stddef.h>
 #include "kitchen_app.h"
 #include "app_manager.h"
 #include "bsp/esp32_p4_function_ev_board.h"
@@ -25,9 +26,10 @@ static esp_err_t navigate(void *ctx, int32_t id, kitchen_nav_t intent)
 }
 esp_err_t kitchen_host_configure(void)
 {
-    /* No host storage API is assumed. Without this optional group Kitchen
-     * works in RAM and displays a persistence-unavailable notice. */
+    /* No host audio/storage API is assumed. Wire submit_audio/set_volume only
+     * to a verified host service implementing the batch/session contract in
+     * docs/INTEGRATION.md. NULL audio keeps the visual timers working. */
     const kitchen_platform_t p = {.lock = lock, .unlock = unlock, .now_ms = now_ms, .navigate = navigate,
-        .storage = {0}};
+        .submit_audio = NULL, .set_volume = NULL, .play_volume_preview = NULL, .storage = {0}};
     return kitchen_app_configure(&p);
 }

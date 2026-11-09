@@ -67,10 +67,11 @@ PWM: 30 кГц, LEDC low-speed timer1/channel0, 10 бит, активный вы
 
 | Defaults | IDF branch | Диапазон SDK | CPU / PSRAM | PHY reference |
 | --- | --- | --- | --- | --- |
-| silicon-legacy | SELECTS_REV_LESS_V3=y | min0.0…max1.99 | 360 / 200 MHz | DEFAULT_LEGACY |
-| silicon-v3 | SELECTS_REV_LESS_V3=n | min3.0…max3.99 | 400 / 250 MHz | DEFAULT |
+| silicon-p4-rev1x (ESP32-P4 rev 1.x) | SELECTS_REV_LESS_V3=y | min0.0…max1.99 | 360 / 200 MHz | DEFAULT_LEGACY |
+| silicon-p4-rev3x (ESP32-P4 rev 3.x) | SELECTS_REV_LESS_V3=n | min3.0…max3.99 | 400 / 250 MHz | DEFAULT |
 
-0.x не исключены автоматически. Границы отражают Kconfig IDF, а не испытанные
+Названия rev1x/rev3x обозначают ревизию чипа ESP32-P4, независимо от PCB.
+Профиль rev1x сохраняет прежнюю совместимость: 0.x не исключены автоматически. Границы отражают Kconfig IDF, а не испытанные
 ревизии; диапазон 2.x этими ветками не поддерживается. Рабочих логов нового baseline
 нет. Имена PHY constants сверены с IDF6: старый alias `MIPI_DSI_PHY_CLK_SRC_DEFAULT`
 всегда обозначает legacy, поэтому использовать его для v3 нельзя.

@@ -17,11 +17,20 @@ typedef struct {
     uint8_t color;
     uint32_t duration_s;
     uint64_t deadline_ms, remaining_ms, span_ms;
+    uint64_t session, time_revision;
+    bool warning_armed; /* Runtime only; consumed even when muted. */
 } kitchen_timer_t;
 typedef struct {
     kitchen_timer_t timers[KITCHEN_MAX_TIMERS];
-    uint8_t volume_percent, pending_chimes;
+    uint8_t volume_percent, pending_warnings, pending_done;
 } kitchen_state_t;
+/* One processing batch. Masks refer to stable slot IDs minus one. Snapshots also
+ * invalidate unstarted backend events after cancellation/restart/time changes.
+ * No pointers; an audio backend must copy this before returning. */
+typedef struct {
+    uint64_t session[KITCHEN_MAX_TIMERS], deadline_ms[KITCHEN_MAX_TIMERS];
+    uint8_t warnings, done, running, finished;
+} kitchen_audio_batch_t;
 typedef enum {
     KITCHEN_CREATE, KITCHEN_PAUSE, KITCHEN_RESUME, KITCHEN_CANCEL,
     KITCHEN_ACKNOWLEDGE, KITCHEN_START, KITCHEN_REPEAT,
@@ -42,6 +51,10 @@ void kitchen_core_init(kitchen_state_t *state);
 void kitchen_core_update(kitchen_state_t *state, uint64_t now_ms);
 kitchen_timer_t *kitchen_core_find(kitchen_state_t *state, uint32_t id);
 uint64_t kitchen_core_remaining(const kitchen_timer_t *timer, uint64_t now_ms);
+/* Consumes events once; call even when audio is unavailable. */
+void kitchen_core_take_audio(kitchen_state_t *state, kitchen_audio_batch_t *batch);
+unsigned kitchen_core_progress(const kitchen_timer_t *timer, uint64_t now_ms);
+void kitchen_core_format_time(char *buffer, unsigned size, const kitchen_timer_t *timer, uint64_t now_ms);
 uint64_t kitchen_core_elapsed(const kitchen_timer_t *timer, uint64_t now_ms);
 bool kitchen_core_apply(kitchen_state_t *state, const kitchen_command_t *command, uint64_t now_ms);
 #ifdef __cplusplus

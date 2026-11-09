@@ -34,10 +34,10 @@ static void model(void)
     assert(state.timers[0].deadline_ms == 337989 && state.timers[0].duration_s == 180);
     assert(state.timers[0].span_ms == 238989);
     kitchen_core_update(&state, 338999);
-    assert(state.timers[0].status == KITCHEN_DONE && state.pending_chimes == 1);
+    assert(state.timers[0].status == KITCHEN_DONE && state.pending_done == 1);
     assert(kitchen_core_elapsed(&state.timers[0], 338999) == 1010);
     kitchen_core_update(&state, 400000);
-    assert(state.pending_chimes == 1);
+    assert(state.pending_done == 1);
     assert(kitchen_core_elapsed(&state.timers[0], 337989 + UINT64_C(172800123)) == UINT64_C(172800123));
     kitchen_command_t edit = {.kind = KITCHEN_EDIT, .id = 1, .name = "Tea", .icon = KITCHEN_ICON_CUP};
     assert(kitchen_core_apply(&state, &edit, 400000));
@@ -75,20 +75,144 @@ static void model(void)
     kitchen_core_init(&state);
     for (unsigned id = 1; id <= KITCHEN_MAX_TIMERS; ++id) assert(apply(&state, KITCHEN_CREATE, id, 1, 10));
     kitchen_core_update(&state, 1010);
-    assert(state.pending_chimes == KITCHEN_MAX_TIMERS);
-    state.pending_chimes = 0;
+    assert(state.pending_done == (1U << KITCHEN_MAX_TIMERS) - 1);
+    state.pending_done = 0;
     kitchen_core_update(&state, 999999);
-    assert(state.pending_chimes == 0);
+    assert(state.pending_done == 0);
     for (unsigned id = 1; id <= KITCHEN_MAX_TIMERS; ++id) {
         assert(state.timers[id - 1].status == KITCHEN_DONE);
         assert(apply(&state, KITCHEN_EXTEND, id, 1, 999999));
     }
     assert(apply(&state, KITCHEN_SET_VOLUME, 0, 0, 999999));
     kitchen_core_update(&state, 1000999);
-    assert(state.pending_chimes == 0);
+    assert(state.pending_done == 0);
     assert(apply(&state, KITCHEN_SET_VOLUME, 0, 100, 1000999));
     kitchen_core_update(&state, 1001000);
-    assert(state.pending_chimes == 0); /* unmute must not replay old DONE */
+    assert(state.pending_done == 0); /* unmute must not replay old DONE */
+}
+
+static void warnings_and_display(void)
+{
+    kitchen_state_t state;
+    kitchen_audio_batch_t batch;
+    char text[40];
+    kitchen_core_init(&state);
+    assert(apply(&state, KITCHEN_CREATE, 1, 10, 100));
+    kitchen_timer_t *timer = &state.timers[0];
+    uint64_t session = timer->session;
+    assert(kitchen_core_progress(timer, 100) == 0);
+    kitchen_core_update(&state, 5099);
+    assert(!state.pending_warnings);
+    kitchen_core_update(&state, 5100);
+    assert(state.pending_warnings == 1 && !timer->warning_armed);
+    assert(kitchen_core_progress(timer, 5100) == 500);
+    kitchen_core_take_audio(&state, &batch);
+    assert(batch.warnings == 1 && batch.running == 1 && batch.session[0] == session);
+    kitchen_core_update(&state, 5101);
+    assert(!state.pending_warnings);
+    assert(apply(&state, KITCHEN_PAUSE, 1, 0, 5101));
+    unsigned progress = kitchen_core_progress(timer, 5101);
+    assert(kitchen_core_progress(timer, 9000) == progress);
+    assert(apply(&state, KITCHEN_RESUME, 1, 0, 9000));
+    kitchen_core_update(&state, 9001);
+    assert(!state.pending_warnings && timer->session == session);
+    assert(apply(&state, KITCHEN_ADJUST, 1, 60, 9001));
+    assert(timer->warning_armed && timer->time_revision == 1);
+    assert(kitchen_core_progress(timer, 9001) == 0); /* expanded span */
+    kitchen_core_update(&state, timer->deadline_ms - 5000);
+    assert(state.pending_warnings == 1);
+    /* A late update supersedes a pending warning, keeps actual deadline. */
+    uint64_t deadline = timer->deadline_ms;
+    kitchen_core_update(&state, deadline + 61000);
+    assert(!state.pending_warnings && state.pending_done == 1);
+    assert(kitchen_core_progress(timer, deadline + 61000) == 1000);
+    kitchen_core_format_time(text, sizeof(text), timer, deadline);
+    assert(!strcmp(text, "00:00"));
+    kitchen_core_format_time(text, sizeof(text), timer, deadline + 999);
+    assert(!strcmp(text, "00:00"));
+    kitchen_core_format_time(text, sizeof(text), timer, deadline + 1000);
+    assert(!strcmp(text, "\xe2\x88\x92" "00:01"));
+    kitchen_core_format_time(text, sizeof(text), timer, deadline + 60000);
+    assert(!strcmp(text, "\xe2\x88\x92" "01:00"));
+    kitchen_core_format_time(text, sizeof(text), timer, deadline + UINT64_C(360000000));
+    assert(!strcmp(text, "\xe2\x88\x92" "100:00:00"));
+    assert(apply(&state, KITCHEN_EXTEND, 1, 60, deadline + 61000));
+    assert(timer->session != session && timer->deadline_ms == deadline + 121000);
+    assert(!state.pending_done && timer->warning_armed);
+    kitchen_core_update(&state, timer->deadline_ms); /* skipped threshold entirely */
+    kitchen_core_take_audio(&state, &batch);
+    assert(batch.done == 1 && !batch.warnings);
+    assert(apply(&state, KITCHEN_REPEAT, 1, 0, timer->deadline_ms));
+    assert(timer->warning_armed);
+    kitchen_core_update(&state, timer->deadline_ms - 5000);
+    assert(state.pending_warnings == 1);
+    assert(apply(&state, KITCHEN_CANCEL, 1, 0, timer->deadline_ms - 4000));
+    kitchen_core_take_audio(&state, &batch);
+    assert(!batch.warnings && !batch.done && !batch.running && !batch.finished);
+    assert(kitchen_core_progress(timer, 0) == 0);
+
+    /* Short initial sessions skip warnings; a later extension above 5s arms. */
+    kitchen_core_init(&state);
+    for (unsigned id = 1; id <= 5; ++id) assert(apply(&state, KITCHEN_CREATE, id, id, 0));
+    kitchen_core_update(&state, 1);
+    assert(!state.pending_warnings);
+    assert(apply(&state, KITCHEN_ADJUST, 1, 60, 1));
+    assert(state.timers[0].warning_armed);
+    kitchen_core_update(&state, 5000);
+    kitchen_core_take_audio(&state, &batch);
+    assert(batch.done == 30 && !batch.warnings); /* IDs 2..5, one same-type batch */
+    assert(apply(&state, KITCHEN_SET_VOLUME, 0, 0, 5000));
+    kitchen_core_update(&state, state.timers[0].deadline_ms - 5000);
+    assert(!state.pending_warnings && !state.timers[0].warning_armed);
+    assert(apply(&state, KITCHEN_SET_VOLUME, 0, 100, state.timers[0].deadline_ms - 4000));
+    kitchen_core_take_audio(&state, &batch);
+    assert(!batch.warnings && !batch.done); /* unmute does not replay warning */
+    assert(apply(&state, KITCHEN_SET_VOLUME, 0, 0, state.timers[0].deadline_ms - 3000));
+    kitchen_core_update(&state, state.timers[0].deadline_ms);
+    assert(apply(&state, KITCHEN_SET_VOLUME, 0, 100, state.timers[0].deadline_ms));
+    kitchen_core_take_audio(&state, &batch);
+    assert(!batch.done);
+    assert(apply(&state, KITCHEN_ACKNOWLEDGE, 1, 0, 90000));
+    assert(state.timers[0].duration_s == 1 && !state.timers[0].warning_armed);
+    assert(apply(&state, KITCHEN_START, 1, 0, 90000));
+    assert(!state.timers[0].warning_armed);
+
+    /* Independent warning + DONE in one cycle, and no repeated event on tick. */
+    kitchen_core_init(&state);
+    assert(apply(&state, KITCHEN_CREATE, 1, 10, 0));
+    assert(apply(&state, KITCHEN_CREATE, 2, 5, 0));
+    assert(apply(&state, KITCHEN_CREATE, 3, 10, 0));
+    kitchen_core_update(&state, 5000);
+    kitchen_core_take_audio(&state, &batch);
+    assert(batch.warnings == 5 && batch.done == 2);
+    kitchen_core_update(&state, 5000);
+    kitchen_core_take_audio(&state, &batch);
+    assert(!batch.warnings && !batch.done);
+    /* Exact edits below/above the threshold; pause above 5s preserves eligibility. */
+    assert(apply(&state, KITCHEN_SET_TIME, 1, 8, 5000));
+    assert(apply(&state, KITCHEN_PAUSE, 1, 0, 5000));
+    kitchen_core_update(&state, 50000);
+    assert(state.timers[0].warning_armed && !state.pending_warnings);
+    kitchen_core_take_audio(&state, &batch);
+    assert(batch.done == 4);
+    assert(apply(&state, KITCHEN_RESUME, 1, 0, 50000));
+    assert(apply(&state, KITCHEN_SET_TIME, 1, 4, 50000));
+    kitchen_core_update(&state, 50000);
+    kitchen_core_take_audio(&state, &batch);
+    assert(batch.warnings == 1 && !batch.done);
+    state.timers[0].span_ms = 0;
+    assert(kitchen_core_progress(&state.timers[0], 50000) == 0);
+    state.timers[0].span_ms = 1000; /* remaining > span is clamped */
+    assert(kitchen_core_progress(&state.timers[0], 50000) == 0);
+    kitchen_core_init(&state);
+    for (unsigned id = 1; id <= KITCHEN_MAX_TIMERS; ++id)
+        assert(apply(&state, KITCHEN_CREATE, id, 10, 0));
+    kitchen_core_update(&state, 5000);
+    kitchen_core_take_audio(&state, &batch);
+    assert(batch.warnings == 31 && !batch.done);
+    kitchen_core_update(&state, 10000);
+    kitchen_core_take_audio(&state, &batch);
+    assert(batch.done == 31 && !batch.warnings);
 }
 
 typedef struct {
@@ -216,10 +340,11 @@ static void persistence(void)
     kitchen_settings_t loaded;
     kitchen_core_init(&reboot);
     kitchen_settings_init(&loaded, &reboot, &backend);
-    assert(reboot.volume_percent == 0 && reboot.pending_chimes == 0);
+    assert(reboot.volume_percent == 0 && reboot.pending_done == 0 && reboot.pending_warnings == 0);
     for (unsigned i = 0; i < KITCHEN_MAX_TIMERS; ++i) {
         assert(reboot.timers[i].status == KITCHEN_READY);
         assert(!reboot.timers[i].deadline_ms && !reboot.timers[i].remaining_ms);
+        assert(!reboot.timers[i].warning_armed && !reboot.timers[i].session && !reboot.timers[i].time_revision);
         assert(reboot.timers[i].icon == KITCHEN_ICON_OVEN && strlen(reboot.timers[i].name) == 32);
     }
     fake.committed[3][5] = 255; /* one corrupt icon must not clear other keys */
@@ -269,7 +394,7 @@ static void records(void)
 }
 int main(void)
 {
-    model(); records(); persistence();
+    model(); warnings_and_display(); records(); persistence();
     puts("Kitchen core/settings acceptance: PASS");
     return 0;
 }

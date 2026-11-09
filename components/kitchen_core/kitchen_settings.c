@@ -54,6 +54,8 @@ kitchen_storage_result_t kitchen_settings_decode(kitchen_state_t *state, unsigne
     timer->name[data[6]] = 0;
     timer->status = seconds ? KITCHEN_READY : KITCHEN_EMPTY;
     timer->remaining_ms = timer->deadline_ms = timer->span_ms = 0;
+    timer->session = timer->time_revision = 0;
+    timer->warning_armed = false;
     return KITCHEN_STORAGE_OK;
 }
 static bool equal(const uint8_t *a, size_t na, const uint8_t *b, size_t nb)
