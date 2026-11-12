@@ -122,13 +122,19 @@ bool kitchen_core_apply(kitchen_state_t *state, const kitchen_command_t *cmd, ui
     }
     kitchen_timer_t *timer = kitchen_core_find(state, cmd->id);
     if (!timer) return false;
-    if (cmd->kind == KITCHEN_CREATE) {
+    if (cmd->kind == KITCHEN_CREATE || cmd->kind == KITCHEN_CONFIGURE) {
         if (timer->status != KITCHEN_EMPTY || !valid_seconds(cmd->seconds) ||
             !valid_name(cmd->name) || (unsigned)cmd->icon >= KITCHEN_ICON_COUNT ||
             now_ms > UINT64_MAX - (uint64_t)cmd->seconds * 1000) return false;
         timer->duration_s = (uint32_t)cmd->seconds;
         timer->icon = cmd->icon;
         memcpy(timer->name, cmd->name, strlen(cmd->name) + 1);
+        if (cmd->kind == KITCHEN_CONFIGURE) {
+            timer->status = KITCHEN_READY;
+            timer->remaining_ms = timer->deadline_ms = timer->span_ms = 0;
+            timer->warning_armed = false;
+            return true;
+        }
         return run(state, timer, (uint64_t)cmd->seconds * 1000, now_ms);
     }
     if (timer->status == KITCHEN_EMPTY) return false;

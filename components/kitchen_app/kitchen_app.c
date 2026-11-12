@@ -79,7 +79,7 @@ static bool command(void *ctx, const kitchen_command_t *cmd)
             ESP_LOGW("kitchen", "volume update failed: %s", esp_err_to_name(ret));
         }
     }
-    if (changed && (cmd->kind == KITCHEN_CREATE || cmd->kind == KITCHEN_EDIT ||
+    if (changed && (cmd->kind == KITCHEN_CREATE || cmd->kind == KITCHEN_CONFIGURE || cmd->kind == KITCHEN_EDIT ||
         (previous_status == KITCHEN_READY && (cmd->kind == KITCHEN_ADJUST || cmd->kind == KITCHEN_SET_TIME))))
         kitchen_settings_request(&app->settings, &app->state, cmd->id);
     service(app);

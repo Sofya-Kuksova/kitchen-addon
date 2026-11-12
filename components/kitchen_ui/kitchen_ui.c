@@ -800,10 +800,23 @@ static void set_editor(kitchen_ui_t *ui, int editor, uint32_t seconds)
     visible(ui->edit_cancel, editor != EDIT_SETUP);
     refresh_overlay(ui);
 }
+static bool save_initial_setup(kitchen_ui_t *ui)
+{
+    kitchen_timer_t *timer = selected(ui);
+    if (ui->editor != EDIT_SETUP || !timer || timer->status != KITCHEN_EMPTY) return true;
+    if (ui->naming) finish_name(ui, true);
+    uint32_t seconds = rollers_value(ui);
+    /* Zero duration still denotes an unconfigured slot; do not invent a duration. */
+    if (!seconds) return true;
+    kitchen_command_t cmd = {.kind = KITCHEN_CONFIGURE, .id = ui->selected,
+        .seconds = (int32_t)seconds, .name = ui->draft_name, .icon = ui->draft_icon};
+    return ui->command(ui->context, &cmd);
+}
 static void timer_backdrop(lv_event_t *event)
 {
     kitchen_ui_t *ui = lv_event_get_user_data(event);
     if (!ui->active || ui->opening || ui->closing || lv_event_get_target(event) != ui->modal) return;
+    if (!save_initial_setup(ui)) return;
     if (ui->naming) finish_name(ui, false);
     animate_overlay(ui, false);
 }
@@ -1295,6 +1308,7 @@ static void action_event(lv_event_t *event)
         primary(ui, shown);
         break;
     case A_CLOSE:
+        if (!save_initial_setup(ui)) break;
         if (ui->naming) finish_name(ui, false);
         animate_overlay(ui, false);
         break;
@@ -1341,11 +1355,9 @@ static void refresh(kitchen_ui_t *ui)
     if (!ui->root || ui->failed) return;
     uint64_t current = now(ui);
     for (unsigned i = 0; i < KITCHEN_MAX_TIMERS; ++i) {
-        /* Freeze hidden motion, but still display newly completed timers.
-         * Core/heartbeat/audio/storage continue independently of this cache. */
-        if (!ui->modal || ui->cards[i].painted_status != ui->state->timers[i].status)
-            update_card(&ui->cards[i], current);
-        else ui->cards[i].progress_valid = ui->cards[i].progress_smoothing = false;
+        /* The dimmed cards remain visible under the modal: keep their time,
+         * progress and pulse current without restarting progress smoothing. */
+        update_card(&ui->cards[i], current);
     }
     refresh_overlay(ui);
     bool error = kitchen_settings_failed(ui->settings);

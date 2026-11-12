@@ -1,0 +1,9 @@
+menu "Kitchen development"
+    config KITCHEN_RESET_TOKEN
+        string "One-time Kitchen settings reset token (empty disables)"
+        default ""
+        help
+            Development only. Set a new token, at most 63 bytes, to erase only
+            namespace kitchen once at startup. The token is remembered outside
+            that namespace. Keep empty for normal firmware; never erase all NVS.
+endmenu

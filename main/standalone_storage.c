@@ -1,4 +1,5 @@
 #include "standalone_storage.h"
+#include "kitchen_reset_once.h"
 #include <string.h>
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -29,6 +30,7 @@ static esp_err_t open_storage(void)
 {
     if (s_open) return ESP_OK;
     esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_OK) ret = kitchen_reset_once();
     if (ret == ESP_OK) ret = nvs_open("kitchen", NVS_READWRITE, &s_handle);
     if (ret == ESP_OK) s_open = true;
     else ESP_LOGW(TAG, "NVS unavailable (no erase): %s", esp_err_to_name(ret));
